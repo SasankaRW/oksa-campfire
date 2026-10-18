@@ -52,6 +52,14 @@ If you set up Supabase before this version, run `supabase/schema.sql` again. It'
 4. Use **Stoke the fire** for big moments, such as a speech or a song. Use **Let it burn low** for the closing.
 5. After the fire is lit, everyone can download a **Keepsake** image with their name.
 
+## Leaders' honour logs (5 special guests)
+1. In `/admin`, under **Leaders' honour logs**, enter the 5 names and titles and click **Save leaders and make links**.
+2. Click **Copy link** next to each leader and send it to them privately. The link only works for that leader; saving names again keeps the same links.
+3. During the ceremony, click **Call next leader**. Everyone sees "The fire keeper calls …" and that leader gets a **Lay the honour log** button.
+4. When they press it, every screen dims, the camera eases in, a drum plays and their birch log descends in golden embers. A title card reads "Laid by *name*, *title*".
+5. The 5 logs form the frame at the heart of the fire, lashed with gold rope once all five are in. They catch first when the fire arrow is shot.
+6. If a leader has trouble with their link, click **Lay for them**. **Undo** resets that one leader.
+
 ## Capacity (built for 400 people on free plans)
 - **Live sync:** up to about 200 people get instant live updates (the Supabase free-plan limit). Everyone else is kept in sync automatically by a small check every 3 seconds. The fire is lit at a set time, so everyone still sees it catch together.
 - **Load at 400 people:** about 130 tiny database requests a second during the event, and around 1.5 MB per visitor on Vercel (images are cached). Both are well within the free plans.

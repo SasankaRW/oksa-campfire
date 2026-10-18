@@ -298,7 +298,13 @@ export default function Fire({ quality = 'high' }) {
       state.current.bursts.push({ type: 'dust', at: base.clone(), n: 5 });
       if (shared.lit) state.current.bursts.push({ type: 'sparks', at: center.clone().setY(0.6), n: 30, flare: 0.12 });
     });
-    return () => offLand();
+    const offHonour = on('honour-landed', ({ at }) => {
+      state.current.bursts.push({ type: 'sparks', at, n: shared.lit ? 160 : 60, flare: shared.lit ? 0.3 : 0 });
+    });
+    return () => {
+      offLand();
+      offHonour();
+    };
   }, []);
 
   useFrame((_, dtRaw) => {
@@ -330,6 +336,7 @@ export default function Fire({ quality = 'high' }) {
         }
       }
     }
+    const honourBurning = lit ? (shared.honour || []).filter((h) => h.ign <= now) : [];
     const kindlingLit = lit && now - ig > 0;
     const sinceIg = now - ig;
 
@@ -371,9 +378,9 @@ export default function Fire({ quality = 'high' }) {
     let target = 0;
     if (lit) {
       const kin = Math.min(1, sinceIg / 2.5) * 0.28;
-      const logsPart = 1 - Math.exp(-burning.length / 30);
+      const logsPart = 1 - Math.exp(-(burning.length + honourBurning.length * 4) / 30);
       target = Math.max(kin, 0.28 + logsPart * 0.95);
-      if (burning.length === 0) target = kin;
+      if (burning.length === 0 && honourBurning.length === 0) target = kin;
       target += Math.exp(-Math.pow(sinceIg - 3.2, 2) / 1.2) * 0.45; // the "whoomph"
       if (f.mode === 'embers') target *= 0.14;
     }
@@ -488,8 +495,8 @@ export default function Fire({ quality = 'high' }) {
     const spread = 0.3 + maxRing * 0.07;
     flameMat.uniforms.uBright.value = 0.22 / (1 + maxRing * 0.07);
     {
-      const tv = burning.length
-        ? { radius: 0.3 + maxRing * 0.13, top: 1.0 + 0.11 * maxRing, cx: 0, cz: 0 }
+      const tv = burning.length || honourBurning.length
+        ? { radius: Math.max(0.3 + maxRing * 0.13, honourBurning.length ? 0.6 : 0), top: Math.max(1.0 + 0.11 * maxRing, honourBurning.length ? 1.9 : 0), cx: 0, cz: 0 }
         : { radius: 0.22, top: 0.55, cx: S.touch ? S.touch.x : 0, cz: S.touch ? S.touch.z : 0 };
       const v = (shared.volume = shared.volume || { ...tv });
       const k = 1 - Math.exp(-dt * 1.2);
@@ -505,7 +512,15 @@ export default function Fire({ quality = 'high' }) {
       const r = Math.random();
       let x, y, z;
       let sz = 0.22 + Math.random() * 0.26;
-      if (burning.length === 0 || r < 0.3) {
+      if (honourBurning.length && Math.random() < (burning.length ? 0.2 : 0.75)) {
+        // flames climbing the leaders' poles
+        const h = honourBurning[(Math.random() * honourBurning.length) | 0];
+        const t = 0.15 + Math.random() * 0.75;
+        x = h.base.x + h.dir.x * h.len * t + (Math.random() - 0.5) * 0.12;
+        y = h.base.y + h.dir.y * h.len * t;
+        z = h.base.z + h.dir.z * h.len * t + (Math.random() - 0.5) * 0.12;
+        sz *= 1.1;
+      } else if (burning.length === 0 || r < 0.3) {
         // central column / kindling
         const rr = Math.sqrt(Math.random()) * (burning.length ? 0.15 + maxRing * 0.04 : 0.14);
         const a = Math.random() * Math.PI * 2;

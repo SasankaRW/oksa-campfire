@@ -11,6 +11,7 @@ import Fire from './Fire';
 import FireVolume from './FireVolume';
 import { HeatHaze } from './HeatHaze';
 import HandLog from './HandLog';
+import HonourLogs from './HonourLogs';
 import Labels from './Labels';
 import { shared, setZoom } from '@/lib/bus';
 import { useEffect } from 'react';
@@ -71,6 +72,7 @@ function CameraRig() {
   const { camera, size } = useThree();
   useZoomControls();
   const zoomS = useRef(1);
+  const spotS = useRef(0);
   const pointer = useRef(new THREE.Vector2());
   const look = useRef(new THREE.Vector3(0, 1.2, 0));
   useFrame((state, dt) => {
@@ -78,14 +80,19 @@ function CameraRig() {
     const t = sceneNow();
     const portrait = size.width / size.height < 0.9;
     const I = shared.intensity || 0;
-    zoomS.current += (shared.zoom - zoomS.current) * (1 - Math.exp(-dt * 5));
+    // during a leader's moment, ease in closer, then back out
+    const sp = shared.spotlight;
+    const spotK = sp ? Math.sin(Math.min(1, sp.t / 9) * Math.PI) : 0;
+    spotS.current += (spotK - spotS.current) * (1 - Math.exp(-dt * 2));
+    const zTarget = shared.zoom * (1 - 0.38 * spotS.current);
+    zoomS.current += (zTarget - zoomS.current) * (1 - Math.exp(-dt * 3));
     const z = zoomS.current;
     const dist = ((portrait ? 13.5 : 10.2) - Math.min(I, 1.2) * 0.3) * z;
     const x = (Math.sin(t * 0.045) * 0.6 + pointer.current.x * 0.6) * Math.min(1, z);
     // closer = lower and looking at the flames; further = higher, more valley
     const y = 1.2 + 2.1 * z + Math.sin(t * 0.083) * 0.08 + pointer.current.y * 0.2;
     camera.position.lerp(new THREE.Vector3(x, y, dist), 1 - Math.exp(-dt * 4));
-    look.current.set(0, 1.05 + 0.4 * Math.min(z, 1.2) + Math.min(I, 1.2) * 0.1, -2 * Math.min(1, z));
+    look.current.set(0, 1.05 + 0.4 * Math.min(z, 1.2) + Math.min(I, 1.2) * 0.1 + spotS.current * 0.7, -2 * Math.min(1, z));
     camera.lookAt(look.current);
     const fov = portrait ? 60 : 42;
     if (Math.abs(camera.fov - fov) > 0.01) {
@@ -116,6 +123,7 @@ export default function Scene({ quality = 'high', handActive, onThrow, mySeed })
       <Suspense fallback={null}>
         <Surroundings />
         <Logs />
+        <HonourLogs />
         <Fire quality={quality} />
         <FireVolume quality={quality} />
         <HandLog active={handActive} onThrow={onThrow} seed={mySeed} />

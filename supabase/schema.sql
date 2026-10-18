@@ -31,6 +31,21 @@ create table if not exists public.fire_state (
 );
 insert into public.fire_state (id) values (1) on conflict (id) do nothing;
 
+alter table public.fire_state add column if not exists leaders_rev integer not null default 0;
+
+-- ---------- the 5 leaders' honour logs (private: links carry a secret token) ----------
+create table if not exists public.leaders (
+  slot int primary key check (slot between 0 and 4),
+  name text not null default '',
+  title text not null default '',
+  token text not null unique,
+  called_at timestamptz,
+  laid_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+alter table public.leaders enable row level security;
+-- (no read policy: only the server can see tokens; the public view comes from campfire_since)
+
 -- ---------- who is around the fire (heartbeat) ----------
 create table if not exists public.presence (
   device_id text primary key check (char_length(device_id) between 8 and 64),
@@ -69,7 +84,10 @@ language sql stable security definer set search_path = public as $$
   select json_build_object(
     'now', now(),
     'fire', (select row_to_json(f) from fire_state f where id = 1),
-    'logs', coalesce((select json_agg(l order by l.created_at) from logs l where l.updated_at > p_since), '[]'::json)
+    'logs', coalesce((select json_agg(l order by l.created_at) from logs l where l.updated_at > p_since), '[]'::json),
+    'leaders', coalesce((select json_agg(json_build_object(
+        'slot', slot, 'name', name, 'title', title, 'called_at', called_at, 'laid_at', laid_at) order by slot)
+      from leaders where name <> ''), '[]'::json)
   );
 $$;
 

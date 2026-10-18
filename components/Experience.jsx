@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useStore, loadProfile, saveProfile } from '@/lib/store';
-import { startRealtime, addLog } from '@/lib/realtime';
+import { startRealtime, addLog, leaderInfo, leaderLay } from '@/lib/realtime';
 import { initAudio, muteAudio } from '@/lib/audio';
 import { emit, shared, setZoom } from '@/lib/bus';
 import { EVENT, MAX_NAME, MAX_MESSAGE } from '@/lib/config';
@@ -46,11 +46,19 @@ export default function Experience({ mode = 'guest' }) {
   const [busy, setBusy] = useState(false);
   const [quality, setQuality] = useState('high');
   const [hideUi, setHideUi] = useState(false);
+  const [leaderToken, setLeaderToken] = useState(null);
+  const [leaderMe, setLeaderMe] = useState(null); // { slot, name, title } or { error }
+  const [leaderBusy, setLeaderBusy] = useState(false);
+  const leaders = useStore((s) => s.leaders);
   useTick(200);
 
   useEffect(() => {
     setQuality(detectQuality());
     startRealtime();
+    try {
+      const t = new URLSearchParams(location.search).get('leader');
+      if (t) setLeaderToken(t);
+    } catch {}
     const p = loadProfile();
     if (p) {
       setProfile(p);
@@ -72,7 +80,38 @@ export default function Experience({ mode = 'guest' }) {
   const lit = igniteIn !== null && igniteIn <= 0;
   const counting = igniteIn !== null && igniteIn > 0 && igniteIn <= 60;
   const status = lit ? (fire.mode === 'embers' ? EVENT.embers : EVENT.lit) : counting ? 'The fire arrow is drawn…' : EVENT.waiting;
-  const handActive = mode === 'guest' && ready && !!profile && !mine;
+  const isLeader = !!leaderToken && leaderMe && !leaderMe.error;
+  const handActive = mode === 'guest' && !leaderToken && ready && !!profile && !mine;
+
+  useEffect(() => {
+    if (!ready || !leaderToken) return;
+    leaderInfo(leaderToken)
+      .then((l) => setLeaderMe(l))
+      .catch((e) => setLeaderMe({ error: e.message }));
+  }, [ready, leaderToken]);
+
+  // live status of this leader (called / laid) comes from the shared list
+  const myLeader = isLeader ? leaders.find((l) => l.slot === leaderMe.slot) || leaderMe : null;
+  // the leader currently being called (for everyone)
+  const calling = [...leaders].filter((l) => l.called_at && !l.laid_at).sort((a, b) => b.called_at - a.called_at)[0];
+  // the leader whose honour log is being laid right now (for everyone)
+  const spot = leaders
+    .filter((l) => l.laid_at && (now - l.laid_at) / 1000 >= 0 && (now - l.laid_at) / 1000 < 9)
+    .sort((a, b) => b.laid_at - a.laid_at)[0];
+  const spotT = spot ? (now - spot.laid_at) / 1000 : 0;
+
+  async function layHonour() {
+    setLeaderBusy(true);
+    try {
+      initAudio();
+      setSound(true);
+      await leaderLay(leaderToken);
+    } catch (e) {
+      setLeaderMe((m) => ({ ...m, note: e.message }));
+    } finally {
+      setLeaderBusy(false);
+    }
+  }
 
   async function join(e) {
     e.preventDefault();
@@ -123,7 +162,52 @@ export default function Experience({ mode = 'guest' }) {
     <main className={`stage ${hideUi ? 'ui-hidden' : ''}`}>
       {sceneEl}
       <div className={`curtain ${ready ? 'up' : ''}`} />
-      <div className={`dim ${counting ? 'on' : ''}`} />
+      <div className={`dim ${counting ? 'on' : ''} ${spot ? 'spot' : ''}`} />
+
+      {spot && (
+        <div className={`honour-card ${spotT > 8 ? 'out' : ''}`} key={spot.slot + '-' + spot.laid_at}>
+          <div className="honour-eyebrow">Honour log</div>
+          <div className="honour-name">Laid by {spot.name}</div>
+          {spot.title && <div className="honour-title">{spot.title}</div>}
+        </div>
+      )}
+
+      {!spot && calling && !(isLeader && myLeader?.slot === calling.slot) && (
+        <div className="calling">
+          The fire keeper calls <strong>{calling.name}</strong>
+          {calling.title ? `, ${calling.title}` : ''}
+        </div>
+      )}
+
+      {leaderToken && ready && leaderMe?.error && (
+        <div className="card leader-card">
+          <h2>This link isn't working</h2>
+          <p className="lede">{leaderMe.error} Please ask the fire keeper for your link again.</p>
+        </div>
+      )}
+
+      {isLeader && myLeader && !(spot && spot.slot === myLeader.slot) && (
+        <div className="card leader-card">
+          <div className="eyebrow">Honour log</div>
+          <h2>Welcome, {myLeader.name}</h2>
+          {myLeader.title && <p className="lede leader-title">{myLeader.title}</p>}
+          {!myLeader.called_at && (
+            <p className="lede">
+              Your honour log is ready. When the fire keeper calls your name, a button will appear here for you to lay it.
+            </p>
+          )}
+          {myLeader.called_at && !myLeader.laid_at && (
+            <>
+              <p className="lede">You have been called. Everyone around the fire will watch your log being laid.</p>
+              <button className="btn place pulse" disabled={leaderBusy} onClick={layHonour}>
+                {leaderBusy ? 'Laying it…' : 'Lay the honour log'}
+              </button>
+            </>
+          )}
+          {myLeader.laid_at && <p className="lede">Your honour log is in place at the heart of the fire. Thank you.</p>}
+          {leaderMe?.note && <div className="error">{leaderMe.note}</div>}
+        </div>
+      )}
 
       <header className="hud-top">
         <div>
@@ -153,7 +237,7 @@ export default function Experience({ mode = 'guest' }) {
         </div>
       )}
 
-      {mode === 'guest' && ready && !profile && (
+      {mode === 'guest' && !leaderToken && ready && !profile && (
         <form className="card join" onSubmit={join}>
           <div className="eyebrow">{EVENT.year} · Virtual campfire</div>
           <h2>Take a log for the fire</h2>
@@ -218,7 +302,7 @@ export default function Experience({ mode = 'guest' }) {
         </div>
       )}
 
-      {mode === 'guest' && mine && (
+      {mode === 'guest' && !leaderToken && mine && (
         <div className="mine">
           <div>
             <div className="mine-name">

@@ -24,7 +24,7 @@ export function makeLogMaterial({ instanced = true } = {}) {
         aLen: { value: 1.3 },
         aRad: { value: 0.075 },
       };
-      Object.assign(shader.uniforms, { uSelfGlow: { value: 0 } }, mat.userData.single);
+      Object.assign(shader.uniforms, { uSelfGlow: { value: 0 }, uBirch: { value: 0 } }, mat.userData.single);
     }
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -57,7 +57,7 @@ export function makeLogMaterial({ instanced = true } = {}) {
         '#include <common>',
         `#include <common>
         ${NOISE}
-        uniform float uTime; uniform float uGlow; uniform float uHighlight; uniform float uHighlightAmt; uniform float uSelfGlow;
+        uniform float uTime; uniform float uGlow; uniform float uHighlight; uniform float uHighlightAmt; uniform float uSelfGlow; uniform float uBirch;
         varying vec3 vLocal; varying vec3 vLocalN; varying float vIgn; varying float vSeed; varying float vLen; varying float vRad; varying float vInst; varying vec3 vWP;
         float gBurn; float gChar; vec3 gEmit;`,
       )
@@ -74,6 +74,13 @@ export function makeLogMaterial({ instanced = true } = {}) {
         float fiss = smoothstep(0.42, 0.58, groove);
         vec3 bark = mix(vec3(0.075,0.055,0.04), vec3(0.30,0.22,0.15), fiss*0.75 + streak*0.35);
         bark = mix(bark, vec3(0.34,0.33,0.28), smoothstep(0.62,0.75, fbm3(vec3(sp*6.0, along*2.0 + vSeed*3.0)))*0.35);
+        if (uBirch > 0.5) {
+          // pale birch bark with dark horizontal lenticels and patches
+          float lent = smoothstep(0.62, 0.7, fbm3(vec3(sp*vRad*5.0, along*26.0 + vSeed)));
+          float patchy = smoothstep(0.58, 0.78, fbm3(vec3(sp*vRad*3.0, along*2.5 + vSeed*2.0)));
+          vec3 birch = mix(vec3(0.80,0.77,0.70), vec3(0.58,0.54,0.47), fbm3(vec3(sp*vRad*12.0, along*6.0)));
+          bark = mix(birch, vec3(0.07,0.06,0.05), max(lent, patchy*0.75));
+        }
         if (cap) {
           float r = length(vLocal.xz);
           float rn = fbm3(vec3(vLocal.xz*4.0, vSeed));
@@ -105,6 +112,7 @@ export function makeLogMaterial({ instanced = true } = {}) {
         float deep = smoothstep(0.18, 0.7, gBurn);
         float glowAmt = gChar * flick * (crack * deep * (0.06 + 0.94*heatZone) + smoothstep(0.55, 0.8, cell) * heatZone * (0.08 + deep));
         gEmit = vec3(1.0, 0.25, 0.035) * (glowAmt * 0.85 + gChar * heatZone * 0.05) * uGlow;
+        if (uBirch > 0.5) gEmit = vec3(1.0, 0.58, 0.16) * length(gEmit) * 1.25;
         gEmit += vec3(1.0, 0.62, 0.25) * uSelfGlow;
         if (abs(vInst - uHighlight) < 0.5) gEmit += vec3(1.0, 0.75, 0.35) * uHighlightAmt * 0.35;
         `,

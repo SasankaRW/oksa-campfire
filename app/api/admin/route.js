@@ -1,6 +1,8 @@
 import { timingSafeEqual } from 'crypto';
 import { adminClient } from '@/lib/supabaseAdmin';
 import { DEMO_NAMES } from '@/lib/demoNames';
+import { randomBytes } from 'crypto';
+import { clean } from '@/lib/profanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +25,40 @@ export async function POST(req) {
   const { data: cur } = await db.from('fire_state').select('*').eq('id', 1).single();
   let patch = null;
 
+  const bump = async () =>
+    db.from('fire_state').update({ leaders_rev: (cur?.leaders_rev || 0) + 1, updated_at: iso(now) }).eq('id', 1);
+  const listLeaders = async () => (await db.from('leaders').select('*').order('slot')).data || [];
+
   switch (body.action) {
     case 'login':
-      return Response.json({ ok: true, fire: cur });
+      return Response.json({ ok: true, fire: cur, leaders: await listLeaders() });
+    case 'leaders_save': {
+      const existing = await listLeaders();
+      const rows = (body.leaders || []).slice(0, 5).map((l, slot) => ({
+        slot,
+        name: clean(l.name, 40),
+        title: clean(l.title, 60),
+        token: existing.find((e) => e.slot === slot)?.token || randomBytes(12).toString('hex'),
+        updated_at: iso(now),
+      }));
+      await db.from('leaders').upsert(rows, { onConflict: 'slot' });
+      await bump();
+      return Response.json({ ok: true, leaders: await listLeaders() });
+    }
+    case 'leader_call':
+    case 'leader_lay':
+    case 'leader_reset': {
+      const slot = Number(body.slot);
+      const patch =
+        body.action === 'leader_call'
+          ? { called_at: iso(now) }
+          : body.action === 'leader_lay'
+            ? { called_at: iso(now), laid_at: iso(now) }
+            : { called_at: null, laid_at: null };
+      await db.from('leaders').update({ ...patch, updated_at: iso(now) }).eq('slot', slot);
+      await bump();
+      return Response.json({ ok: true, leaders: await listLeaders() });
+    }
     case 'ignite': {
       const delay = Math.max(0, Math.min(60, Number(body.delay ?? 10)));
       patch = { ignite_at: iso(now + delay * 1000), mode: 'normal' };
@@ -45,7 +78,8 @@ export async function POST(req) {
       return Response.json({ ok: true });
     case 'reset':
       await db.from('logs').delete().neq('device_id', '');
-      patch = { ignite_at: null, stoke_at: null, mode: 'normal', reset_at: iso(now) };
+      await db.from('leaders').update({ called_at: null, laid_at: null }).gte('slot', 0);
+      patch = { ignite_at: null, stoke_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: (cur?.leaders_rev || 0) + 1 };
       break;
     case 'seed': {
       const n = Math.max(1, Math.min(200, Number(body.count || 20)));

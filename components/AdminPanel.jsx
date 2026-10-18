@@ -6,6 +6,10 @@ import { COUNTDOWN_SECONDS } from '@/lib/config';
 
 export default function AdminPanel() {
   const logs = useStore((s) => s.logs);
+  const adminLeaders = useStore((s) => s.adminLeaders);
+  const pubLeaders = useStore((s) => s.leaders);
+  const [draft, setDraft] = useState(null);
+  const [copied, setCopied] = useState(-1);
   const fire = useStore((s) => s.fire);
   const online = useStore((s) => s.online);
   const demo = useStore((s) => s.demo);
@@ -15,6 +19,17 @@ export default function AdminPanel() {
   const [open, setOpen] = useState(true);
   const [confirmReset, setConfirmReset] = useState(false);
   const [delay, setDelay] = useState(COUNTDOWN_SECONDS);
+
+  // load leaders (with their private links) once signed in
+  useEffect(() => {
+    if (authed && pass) adminAction(pass, 'login').catch(() => {});
+  }, [authed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (draft === null && adminLeaders.length) {
+      setDraft([0, 1, 2, 3, 4].map((i) => ({ name: adminLeaders[i]?.name || '', title: adminLeaders[i]?.title || '' })));
+    }
+  }, [adminLeaders, draft]);
 
   useEffect(() => {
     try {
@@ -126,6 +141,96 @@ export default function AdminPanel() {
               </button>
             </div>
           )}
+
+          <div className="admin-sub">Leaders' honour logs</div>
+          <div className="admin-leaders">
+            {(draft || [0, 1, 2, 3, 4].map(() => ({ name: '', title: '' }))).map((l, i) => (
+              <div className="lrow" key={i}>
+                <input
+                  placeholder={`Leader ${i + 1} name`}
+                  value={l.name}
+                  onChange={(e) => {
+                    const d = [...(draft || [0, 1, 2, 3, 4].map(() => ({ name: '', title: '' })))];
+                    d[i] = { ...d[i], name: e.target.value };
+                    setDraft(d);
+                  }}
+                />
+                <input
+                  placeholder="Title"
+                  value={l.title}
+                  onChange={(e) => {
+                    const d = [...(draft || [0, 1, 2, 3, 4].map(() => ({ name: '', title: '' })))];
+                    d[i] = { ...d[i], title: e.target.value };
+                    setDraft(d);
+                  }}
+                />
+              </div>
+            ))}
+            <button className="btn" style={{ width: '100%' }} onClick={() => run('leaders_save', { leaders: draft || [] })}>
+              Save leaders and make links
+            </button>
+
+            {adminLeaders.some((l) => l.name) && (
+              <>
+                <button
+                  className="btn fire"
+                  style={{ width: '100%', marginTop: 10 }}
+                  onClick={() => {
+                    const next = adminLeaders.find((l) => l.name && !l.called_at);
+                    if (next) run('leader_call', { slot: next.slot });
+                  }}
+                  disabled={!adminLeaders.some((l) => l.name && !l.called_at)}
+                >
+                  {adminLeaders.some((l) => l.name && !l.called_at)
+                    ? `Call next leader: ${adminLeaders.find((l) => l.name && !l.called_at).name}`
+                    : 'All leaders called'}
+                </button>
+                {adminLeaders
+                  .filter((l) => l.name)
+                  .map((l) => {
+                    const p = pubLeaders.find((x) => x.slot === l.slot) || {};
+                    const laid = p.laid_at || l.laid_at;
+                    const called = p.called_at || l.called_at;
+                    return (
+                      <div className="lstat" key={l.slot}>
+                        <div className="who">
+                          {l.slot + 1}. {l.name} {l.title ? <em>· {l.title}</em> : null}
+                        </div>
+                        <span className={`tag2 ${laid ? 'laid' : called ? 'called' : ''}`}>
+                          {laid ? 'Laid' : called ? 'Called, waiting' : 'Not called'}
+                        </span>
+                        <button
+                          className="link"
+                          onClick={() => {
+                            const url = `${location.origin}/?leader=${l.token}`;
+                            navigator.clipboard?.writeText(url);
+                            setCopied(l.slot);
+                            setTimeout(() => setCopied(-1), 1500);
+                          }}
+                        >
+                          {copied === l.slot ? 'Link copied' : 'Copy link'}
+                        </button>
+                        {!called && (
+                          <button className="link" onClick={() => run('leader_call', { slot: l.slot })}>
+                            Call
+                          </button>
+                        )}
+                        {!laid && (
+                          <button className="link" onClick={() => run('leader_lay', { slot: l.slot })}>
+                            Lay for them
+                          </button>
+                        )}
+                        {(called || laid) && (
+                          <button className="link" onClick={() => run('leader_reset', { slot: l.slot })}>
+                            Undo
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+              </>
+            )}
+          </div>
 
           <div className="admin-sub">Rehearsal</div>
           <div className="admin-grid">
