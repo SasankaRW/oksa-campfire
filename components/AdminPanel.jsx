@@ -109,7 +109,7 @@ export default function AdminPanel() {
                 </select>
               </label>
               <button className="btn fire" onClick={() => run('ignite', { delay })}>
-                Light the fire
+                Shoot the fire arrow
               </button>
             </div>
           )}

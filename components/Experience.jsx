@@ -71,7 +71,7 @@ export default function Experience({ mode = 'guest' }) {
   const igniteIn = fire.ignite_at ? (fire.ignite_at - now) / 1000 : null;
   const lit = igniteIn !== null && igniteIn <= 0;
   const counting = igniteIn !== null && igniteIn > 0 && igniteIn <= 60;
-  const status = lit ? (fire.mode === 'embers' ? EVENT.embers : EVENT.lit) : counting ? 'The fire is being lit…' : EVENT.waiting;
+  const status = lit ? (fire.mode === 'embers' ? EVENT.embers : EVENT.lit) : counting ? 'The fire arrow is drawn…' : EVENT.waiting;
   const handActive = mode === 'guest' && ready && !!profile && !mine;
 
   async function join(e) {
@@ -190,7 +190,7 @@ export default function Experience({ mode = 'guest' }) {
             </label>
           </div>
           {error && <div className="error">{error}</div>}
-          <button className="btn primary" type="submit">
+          <button className="btn primary big pulse" type="submit">
             Take your log
           </button>
           <div className="fine">Sound on for the full experience.</div>
@@ -199,9 +199,20 @@ export default function Experience({ mode = 'guest' }) {
 
       {handActive && (
         <div className="hint">
-          <div className="hint-text">Drag your log into the fire</div>
-          <button className="btn ghost" disabled={busy} onClick={() => emit('throw-log')}>
-            {busy ? 'Laying it…' : 'Or lay it on the fire'}
+          <div className="hint-arrows" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="hint-text">Your log is ready. Tap the button below, or drag the log up into the fire.</div>
+          <button className="btn place pulse" disabled={busy} onClick={() => emit('throw-log')}>
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 2c1 3.5 5 5.6 5 10a5 5 0 0 1-10 0c0-2.2 1.2-3.6 2.3-4.6.2 1.6 1 2.6 2 3 0-3 .2-5.6.7-8.4z"
+              />
+            </svg>
+            {busy ? 'Placing your log…' : 'Place my log on the fire'}
           </button>
           {error && <div className="error">{error}</div>}
         </div>
@@ -217,7 +228,7 @@ export default function Experience({ mode = 'guest' }) {
             <div className="mine-sub">Your log is in the fire — #{logs.indexOf(mine) + 1}</div>
           </div>
           <div className="mine-actions">
-            <button className="btn ghost" onClick={() => emit('focus-mine')}>
+            <button className="btn ghost big-ish" onClick={() => emit('focus-mine')}>
               Find my log
             </button>
             {lit && (

@@ -24,7 +24,7 @@ export function makeLogMaterial({ instanced = true } = {}) {
         aLen: { value: 1.3 },
         aRad: { value: 0.075 },
       };
-      Object.assign(shader.uniforms, mat.userData.single);
+      Object.assign(shader.uniforms, { uSelfGlow: { value: 0 } }, mat.userData.single);
     }
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -57,7 +57,7 @@ export function makeLogMaterial({ instanced = true } = {}) {
         '#include <common>',
         `#include <common>
         ${NOISE}
-        uniform float uTime; uniform float uGlow; uniform float uHighlight; uniform float uHighlightAmt;
+        uniform float uTime; uniform float uGlow; uniform float uHighlight; uniform float uHighlightAmt; uniform float uSelfGlow;
         varying vec3 vLocal; varying vec3 vLocalN; varying float vIgn; varying float vSeed; varying float vLen; varying float vRad; varying float vInst; varying vec3 vWP;
         float gBurn; float gChar; vec3 gEmit;`,
       )
@@ -105,6 +105,7 @@ export function makeLogMaterial({ instanced = true } = {}) {
         float deep = smoothstep(0.18, 0.7, gBurn);
         float glowAmt = gChar * flick * (crack * deep * (0.06 + 0.94*heatZone) + smoothstep(0.55, 0.8, cell) * heatZone * (0.08 + deep));
         gEmit = vec3(1.0, 0.25, 0.035) * (glowAmt * 0.85 + gChar * heatZone * 0.05) * uGlow;
+        gEmit += vec3(1.0, 0.62, 0.25) * uSelfGlow;
         if (abs(vInst - uHighlight) < 0.5) gEmit += vec3(1.0, 0.75, 0.35) * uHighlightAmt * 0.35;
         `,
       )

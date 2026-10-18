@@ -25,6 +25,8 @@ Open http://localhost:3000. Without Supabase keys the app runs in **demo mode**,
 ## Go live (about 10 minutes)
 
 ### 1. Supabase (free)
+Step-by-step guide: **[docs/SUPABASE.md](docs/SUPABASE.md)**. Short version:
+
 1. Create a project at https://supabase.com.
 2. Go to **SQL Editor → New query**, paste `supabase/schema.sql` and run it.
 3. Go to **Project Settings → API** and copy the Project URL, the `anon` key and the `service_role` key.
@@ -39,7 +41,9 @@ Open http://localhost:3000. Without Supabase keys the app runs in **demo mode**,
 3. Deploy.
 
 ### 3. Rehearse
-Open `/admin`, add 100 test logs, light the fire and check it on a laptop and a phone. Then click **Reset everything** before the event.
+Open `/admin`, add 100 test logs, shoot the fire arrow and check it on a laptop and a phone. Then click **Reset everything** before the event.
+
+If you set up Supabase before this version, run `supabase/schema.sql` again. It's safe to re-run and adds the new functions.
 
 ## On the night
 1. Share the link in the Meet chat. Each person opens it in their browser, enters a name and lays their log.
@@ -48,10 +52,12 @@ Open `/admin`, add 100 test logs, light the fire and check it on a laptop and a 
 4. Use **Stoke the fire** for big moments, such as a speech or a song. Use **Let it burn low** for the closing.
 5. After the fire is lit, everyone can download a **Keepsake** image with their name.
 
-## Capacity notes
-- Each browser gets its own ID, so each person lays one log, and their name is attached to it.
-- The Supabase free tier allows about 200 simultaneous realtime connections. If that limit is reached, pages switch automatically to checking for updates every 4 seconds, so everyone still sees the fire. For full realtime for everyone on the night, upgrade that one project to Supabase Pro for the month.
-- The fire layout is designed for up to about 300 logs.
+## Capacity (built for 400 people on free plans)
+- **Live sync:** up to about 200 people get instant live updates (the Supabase free-plan limit). Everyone else is kept in sync automatically by a small check every 3 seconds. The fire is lit at a set time, so everyone still sees it catch together.
+- **Load at 400 people:** about 130 tiny database requests a second during the event, and around 1.5 MB per visitor on Vercel (images are cached). Both are well within the free plans.
+- **Vercel free plan:** only three small server functions (`/api/time`, `/api/logs`, `/api/admin`), each called about once per person. Everything else is static or talks to Supabase directly.
+- **Optional extra safety:** upgrade Supabase to Pro for the event month (about $25) so up to 500 people get instant live updates. Nothing in the code needs to change.
+- **Pile size:** each person lays one log, and the pile is designed for up to about 500 logs.
 
 ## Customise
 - Wording, org name and year: `lib/config.js`

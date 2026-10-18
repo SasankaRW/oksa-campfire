@@ -66,9 +66,9 @@ function Ground() {
           vec3 grassC = diffuseColor.rgb * vec3(0.32, 0.36, 0.3);
           grassC = mix(grassC, vec3(0.09,0.07,0.045), smoothstep(0.55,0.72,n2)*0.5); // dry patches
           vec3 dirt = mix(vec3(0.075,0.058,0.045), vec3(0.14,0.11,0.085), n2*0.8 + n3*0.3);
-          float clearing = smoothstep(2.6, 5.5, r + (n1-0.5)*2.5);
+          float clearing = smoothstep(3.0, 5.8, r + (n1-0.5)*2.5);
           vec3 c = mix(dirt, grassC, clearing);
-          float scorch = 1.0 - smoothstep(1.4, 2.6, r + (n2-0.5)*0.6);
+          float scorch = 1.0 - smoothstep(1.8, 3.0, r + (n2-0.5)*0.6);
           c = mix(c, vec3(0.025,0.023,0.021), scorch*0.85);
           // rock on steep ground (cliff face and hill sides)
           float steep = smoothstep(0.75, 0.45, vN.y);
@@ -127,7 +127,7 @@ function Boulders() {
 /* Ring of fire stones */
 function Stones() {
   const ref = useRef();
-  const N = 22;
+  const N = 26;
   const geo = useMemo(() => {
     let g = new THREE.IcosahedronGeometry(1, 4);
     g.deleteAttribute('normal');
@@ -164,7 +164,7 @@ function Stones() {
           float m = fbm3(vO*12.0+4.0);
           vec3 c = mix(vec3(0.16,0.15,0.14), vec3(0.34,0.32,0.29), n*0.9 + m*0.25);
           // soot on the side facing the fire
-          float toFire = 1.0 - smoothstep(1.7, 2.05, length(vW2.xz));
+          float toFire = 1.0 - smoothstep(2.1, 2.45, length(vW2.xz));
           c = mix(c, vec3(0.03), toFire*0.75*smoothstep(0.3,0.7,m+0.2));
           diffuseColor.rgb = c;`,
         );
@@ -176,7 +176,7 @@ function Stones() {
     const q = new THREE.Quaternion();
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2 + hash(i + 200) * 0.1;
-      const R = 1.95 + (hash(i + 210) - 0.5) * 0.12;
+      const R = 2.35 + (hash(i + 210) - 0.5) * 0.12;
       const sx = 0.2 + hash(i + 220) * 0.1;
       const sy = 0.13 + hash(i + 230) * 0.08;
       const sz = 0.17 + hash(i + 240) * 0.08;

@@ -1,5 +1,7 @@
 -- Run this once in Supabase: Dashboard -> SQL Editor -> New query -> paste -> Run.
+-- Safe to run again (it only adds what is missing).
 
+-- ---------- logs: one per person ----------
 create table if not exists public.logs (
   id uuid primary key default gen_random_uuid(),
   device_id text not null unique,
@@ -9,8 +11,16 @@ create table if not exists public.logs (
   hidden boolean not null default false,
   created_at timestamptz not null default now()
 );
+alter table public.logs add column if not exists updated_at timestamptz not null default now();
 create index if not exists logs_created_idx on public.logs (created_at);
+create index if not exists logs_updated_idx on public.logs (updated_at);
 
+create or replace function public.touch_updated_at() returns trigger language plpgsql as $$
+begin new.updated_at = now(); return new; end $$;
+drop trigger if exists logs_touch on public.logs;
+create trigger logs_touch before update on public.logs for each row execute function public.touch_updated_at();
+
+-- ---------- the fire itself (single row) ----------
 create table if not exists public.fire_state (
   id int primary key default 1 check (id = 1),
   ignite_at timestamptz,
@@ -21,15 +31,54 @@ create table if not exists public.fire_state (
 );
 insert into public.fire_state (id) values (1) on conflict (id) do nothing;
 
--- Everyone may read. Only the server (service role key) may write.
+-- ---------- who is around the fire (heartbeat) ----------
+create table if not exists public.presence (
+  device_id text primary key check (char_length(device_id) between 8 and 64),
+  last_seen timestamptz not null default now()
+);
+
+-- Everyone may read logs and the fire. Only the server (secret key) may write them.
 alter table public.logs enable row level security;
 alter table public.fire_state enable row level security;
+alter table public.presence enable row level security;
 drop policy if exists "read logs" on public.logs;
 create policy "read logs" on public.logs for select using (true);
 drop policy if exists "read fire" on public.fire_state;
 create policy "read fire" on public.fire_state for select using (true);
 
--- Live updates
+-- Heartbeat: records this device and returns how many are around the fire.
+create or replace function public.heartbeat(p_device text) returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  if p_device is null or char_length(p_device) < 8 or char_length(p_device) > 64 then
+    return 0;
+  end if;
+  insert into presence (device_id, last_seen) values (p_device, now())
+    on conflict (device_id) do update set last_seen = excluded.last_seen;
+  if random() < 0.02 then
+    delete from presence where last_seen < now() - interval '1 hour';
+  end if;
+  select count(*) into n from presence where last_seen > now() - interval '100 seconds';
+  return n;
+end $$;
+
+-- One cheap call that returns everything that changed since a moment in time.
+create or replace function public.campfire_since(p_since timestamptz) returns json
+language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'now', now(),
+    'fire', (select row_to_json(f) from fire_state f where id = 1),
+    'logs', coalesce((select json_agg(l order by l.created_at) from logs l where l.updated_at > p_since), '[]'::json)
+  );
+$$;
+
+grant execute on function public.heartbeat(text) to anon, authenticated;
+grant execute on function public.campfire_since(timestamptz) to anon, authenticated;
+
+-- Live updates (for the first ~200 people; everyone else is kept in sync by polling)
 alter table public.logs replica identity full;
-alter publication supabase_realtime add table public.logs;
-alter publication supabase_realtime add table public.fire_state;
+do $$ begin
+  begin alter publication supabase_realtime add table public.logs; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.fire_state; exception when duplicate_object then null; end;
+end $$;

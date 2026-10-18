@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useStore } from '@/lib/store';
 import { sceneNow, toScene } from '@/lib/clock';
 import { on, shared } from '@/lib/bus';
-import { setFireLevel, playStrike, playWhoosh } from '@/lib/audio';
+import { setFireLevel, playStrike, playWhoosh, playTwang } from '@/lib/audio';
 import { pileRadius } from '@/lib/layout';
 
 /* ---------------- shared noise texture (cheap fbm lookups) ---------------- */
@@ -333,6 +333,40 @@ export default function Fire({ quality = 'high' }) {
     const kindlingLit = lit && now - ig > 0;
     const sinceIg = now - ig;
 
+    const spawnSparkEarly = (p, dir) => {
+      const i = take(SP);
+      if (i < 0) return;
+      const k = i * 3;
+      SP.pos[k] = p.x;
+      SP.pos[k + 1] = p.y;
+      SP.pos[k + 2] = p.z;
+      SP.vel[k] = -dir.x * 2 + (Math.random() - 0.5);
+      SP.vel[k + 1] = -dir.y * 2 + Math.random() * 0.5;
+      SP.vel[k + 2] = -dir.z * 2 + (Math.random() - 0.5);
+      SP.age[i] = 0;
+      SP.life[i] = 0.6 + Math.random() * 0.8;
+      SP.size[i] = 0.025 + Math.random() * 0.03;
+    };
+    const spawnTrail = (p, dir) => {
+      for (let q = 0; q < 6; q++) {
+        const i = take(FL);
+        if (i < 0) break;
+        const k = i * 3;
+        const back = Math.random() * 0.9;
+        FL.pos[k] = p.x - dir.x * back + (Math.random() - 0.5) * 0.05;
+        FL.pos[k + 1] = p.y - dir.y * back + (Math.random() - 0.5) * 0.05;
+        FL.pos[k + 2] = p.z - dir.z * back + (Math.random() - 0.5) * 0.05;
+        FL.vel[k] = -dir.x * 1.5;
+        FL.vel[k + 1] = 0.4 - dir.y * 1.5;
+        FL.vel[k + 2] = -dir.z * 1.5;
+        FL.age[i] = 0;
+        FL.life[i] = 0.25 + Math.random() * 0.25;
+        FL.size[i] = 0.24 + Math.random() * 0.18;
+        FL.heat[i] = 1.0;
+      }
+      for (let q = 0; q < 2; q++) spawnSparkEarly(p, dir);
+    };
+
     /* ------- intensity ------- */
     let target = 0;
     if (lit) {
@@ -360,35 +394,59 @@ export default function Fire({ quality = 'high' }) {
     shared.intensity = I;
     setFireLevel(I);
 
-    /* ------- torch (the admin "places the fire") ------- */
-    const tStart = ig - 3.2;
-    const tEnd = ig + 2.6;
-    const torchOn = now >= tStart && now <= tEnd && sinceIg < 6;
+    /* ------- fire arrow: the admin's shot lights the pile ------- */
+    const FLIGHT = 2.1;
+    const tStart = ig - FLIGHT;
+    const tEnd = ig + 4;
+    const torchOn = now >= tStart && now <= tEnd && sinceIg < 8;
     const tip = v3;
+    const R = pileRadius(ls ? ls.n : 0);
+    const C = new THREE.Vector3(0.1, 0.32 + Math.min(R, 1.2) * 0.25, Math.max(0.2, R - 0.05));
+    if (f.ignite_at) S.touch = C;
     if (torch.current) {
       torch.current.visible = torchOn;
       if (torchOn) {
-        const R = pileRadius(ls ? ls.n : 0);
-        const A = new THREE.Vector3(1.5, 2.6, R + 3.0);
-        const B = new THREE.Vector3(0.25, 0.55, R + 0.5);
-        const C = new THREE.Vector3(0.08, 0.16, Math.max(0.2, R - 0.12));
-        S.touch = C;
+        const P0 = new THREE.Vector3(5.5, 9, 19);
+        const arc = 3.2;
+        const posAt = (u) => {
+          const p = P0.clone().lerp(C, u);
+          p.y += arc * 4 * u * (1 - u);
+          return p;
+        };
         let p;
-        if (now < ig - 0.4) p = A.clone().lerp(B, smooth((now - tStart) / 2.8));
-        else if (now < ig + 1.2) p = B.clone().lerp(C, smooth((now - (ig - 0.4)) / 0.7));
-        else p = C.clone().lerp(A, smooth((now - ig - 1.2) / 1.4));
+        let dir;
+        if (now < ig) {
+          const u = Math.max(0, (now - tStart) / FLIGHT);
+          p = posAt(u);
+          dir = posAt(Math.min(1, u + 0.01)).sub(posAt(Math.max(0, u - 0.01))).normalize();
+          S.arrowDir = dir.clone();
+          // flame and spark trail
+          if (Math.random() < 0.8) spawnTrail(p, dir);
+        } else {
+          // stuck in the pile, quivering, then burnt away
+          const t = now - ig;
+          p = C.clone().addScaledVector(S.arrowDir || new THREE.Vector3(0, -0.5, -1), 0.12);
+          dir = (S.arrowDir || new THREE.Vector3(0, -0.5, -1)).clone();
+          const q = Math.sin(t * 40) * Math.exp(-t * 6) * 0.06;
+          dir.x += q;
+          dir.normalize();
+          const fade = 1 - smooth((t - 2.5) / 1.5);
+          torch.current.scale.setScalar(Math.max(0.001, fade * 1.8));
+        }
+        if (now < ig) torch.current.scale.setScalar(1.8);
         torch.current.position.copy(p);
-        const holder = new THREE.Vector3(p.x + 0.5, p.y + 0.7, p.z + 0.6);
-        torch.current.quaternion.setFromUnitVectors(
-          new THREE.Vector3(0, 1, 0),
-          p.clone().sub(holder).normalize(),
-        );
-        tip.copy(p);
+        torch.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        tip.copy(p).addScaledVector(dir, -0.16);
       }
     }
     if (S.strikeFor !== f.ignite_at && f.ignite_at && now >= tStart && now - tStart < 1) {
       S.strikeFor = f.ignite_at;
+      playTwang();
+    }
+    if (S.hitFor !== f.ignite_at && f.ignite_at && sinceIg >= 0 && sinceIg < 1.5) {
+      S.hitFor = f.ignite_at;
       playStrike();
+      S.bursts.push({ type: 'sparks', at: C.clone(), n: 120, flare: 0.25 });
     }
     if (S.whooshFor !== f.ignite_at && f.ignite_at && sinceIg >= 2.6 && sinceIg < 4) {
       S.whooshFor = f.ignite_at;
@@ -413,7 +471,7 @@ export default function Fire({ quality = 'high' }) {
     }
     if (light2.current) light2.current.intensity = I * 9 * (0.9 + 0.1 * Math.sin(now * 17.3 + 2));
     if (torchLight.current) {
-      torchLight.current.intensity = torchOn ? 3.2 * (0.85 + 0.15 * Math.sin(now * 21)) : 0;
+      torchLight.current.intensity = torchOn ? 5 * (0.85 + 0.15 * Math.sin(now * 21)) * Math.min(1, torch.current ? torch.current.scale.x : 1) : 0;
       if (torchOn) torchLight.current.position.copy(tip).add(new THREE.Vector3(0, 0.25, 0));
     }
 
@@ -506,8 +564,8 @@ export default function Fire({ quality = 'high' }) {
         FL.vel[k + 2] = (Math.random() - 0.5) * 0.1;
         FL.age[i] = 0;
         FL.life[i] = 0.35 + Math.random() * 0.3;
-        FL.size[i] = 0.1 + Math.random() * 0.08;
-        FL.heat[i] = 0.95;
+        FL.size[i] = 0.14 + Math.random() * 0.1;
+        FL.heat[i] = 1.0;
       }
     }
 
@@ -552,7 +610,7 @@ export default function Fire({ quality = 'high' }) {
       S.spAcc -= 1;
       spawnSpark(0, 0.5 + I * 0.5, 0, spread * 0.6, 0.8 + I * 0.4);
     }
-    if (torchOn && Math.random() < 0.3) spawnSpark(tip.x, tip.y, tip.z, 0.03, 0.4);
+    if (torchOn && Math.random() < 0.6) spawnSpark(tip.x, tip.y, tip.z, 0.03, 0.4);
     for (let i = 0; i < SP.n; i++) {
       if (SP.age[i] >= 1) continue;
       SP.age[i] += dt / SP.life[i];
@@ -656,7 +714,7 @@ export default function Fire({ quality = 'high' }) {
       <pointLight ref={torchLight} color="#ffa04a" intensity={0} decay={1.8} />
 
       <mesh rotation-x={-Math.PI / 2} position-y={0.012} material={emberMat} renderOrder={1}>
-        <circleGeometry args={[2.4, 64]} />
+        <circleGeometry args={[2.8, 64]} />
       </mesh>
 
       <mesh geometry={smokeGeo} material={smokeMat} frustumCulled={false} renderOrder={2} />
@@ -664,14 +722,28 @@ export default function Fire({ quality = 'high' }) {
       <points geometry={sparkGeo} material={sparkMat} frustumCulled={false} renderOrder={4} />
 
       <group ref={torch} visible={false}>
-        <mesh position={[0, -0.45, 0]} castShadow>
-          <cylinderGeometry args={[0.018, 0.026, 0.9, 8]} />
-          <meshStandardMaterial color="#3a2a1c" roughness={0.9} />
+        {/* shaft */}
+        <mesh position={[0, -0.42, 0]}>
+          <cylinderGeometry args={[0.009, 0.009, 0.84, 6]} />
+          <meshStandardMaterial color="#6b5236" roughness={0.8} />
         </mesh>
-        <mesh position={[0, -0.02, 0]}>
-          <cylinderGeometry args={[0.032, 0.03, 0.12, 10]} />
-          <meshStandardMaterial color="#120c08" emissive="#ff5a10" emissiveIntensity={1.5} roughness={1} />
+        {/* steel head */}
+        <mesh position={[0, 0.05, 0]}>
+          <coneGeometry args={[0.022, 0.09, 4]} />
+          <meshStandardMaterial color="#3d3d40" metalness={0.8} roughness={0.35} />
         </mesh>
+        {/* burning oil-soaked wrap */}
+        <mesh position={[0, -0.08, 0]}>
+          <sphereGeometry args={[0.03, 10, 8]} />
+          <meshStandardMaterial color="#1a0d06" emissive="#ff6a18" emissiveIntensity={2.2} roughness={1} />
+        </mesh>
+        {/* fletching */}
+        {[0, 1, 2].map((i) => (
+          <mesh key={i} position={[0, -0.76, 0]} rotation={[0, (i * Math.PI * 2) / 3, 0]}>
+            <boxGeometry args={[0.002, 0.12, 0.035]} />
+            <meshStandardMaterial color="#d9cfc0" roughness={0.9} side={THREE.DoubleSide} />
+          </mesh>
+        ))}
       </group>
     </group>
   );

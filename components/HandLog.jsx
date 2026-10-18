@@ -16,10 +16,11 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
       aSeed: { value: seed },
       aLen: { value: 0.8 },
       aRad: { value: 0.07 },
+      uSelfGlow: { value: 0 },
     };
     return m;
   }, [seed]);
-  const st = useRef({ drag: false, ndc: new THREE.Vector2(0.12, -0.6), rest: new THREE.Vector2(0.12, -0.6), thrown: 0, appear: 0, vel: new THREE.Vector2() });
+  const st = useRef({ drag: false, ndc: new THREE.Vector2(0.05, -0.44), rest: new THREE.Vector2(0.05, -0.44), thrown: 0, appear: 0, vel: new THREE.Vector2() });
 
   useEffect(() => {
     const el = gl.domElement;
@@ -43,7 +44,9 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
       if (!s.drag) return;
       s.drag = false;
       el.style.cursor = '';
-      if (s.ndc.y > -0.38) doThrow();
+      // a simple tap on the log also places it
+      const tap = performance.now() - s.downAt < 450 && s.ndc.distanceTo(s.downNdc) < 0.05;
+      if (tap || s.ndc.y > -0.22) doThrow();
     };
     el.addEventListener('pointermove', move);
     window.addEventListener('pointerup', upH);
@@ -73,6 +76,9 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
 
   useFrame((_, dt) => {
     const g = ref.current;
+    // warm pulsing glow so the log is easy to spot
+    const tt = performance.now() / 1000;
+    mat.userData.single.uSelfGlow.value = st.current.thrown ? 0 : 0.05 + 0.09 * (0.5 + 0.5 * Math.sin(tt * 4.4));
     if (!g) return;
     const s = st.current;
     g.visible = active && (!s.thrown || shared.hand !== null);
@@ -90,10 +96,10 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
     }
     if (!s.drag) s.ndc.lerp(s.rest, 1 - Math.exp(-dt * 6));
     const appear = Math.min(1, (performance.now() - s.appear) / 900);
-    const depth = 2.4;
+    const depth = 3.3;
     const v = new THREE.Vector3(s.ndc.x, s.ndc.y - (1 - easeOut(appear)) * 0.6, 0.5).unproject(camera);
     const dir = v.sub(camera.position).normalize();
-    const pos = camera.position.clone().addScaledVector(dir, depth + Math.max(0, s.ndc.y + 0.6) * 1.2);
+    const pos = camera.position.clone().addScaledVector(dir, depth + Math.max(0, s.ndc.y + 0.44) * 1.6);
     pos.y += Math.sin(t * 1.6) * 0.012;
     g.position.copy(pos);
     // lie across the view, slight tilt, gentle sway
@@ -115,6 +121,8 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
         onPointerDown={(e) => {
           e.stopPropagation();
           st.current.drag = true;
+          st.current.downAt = performance.now();
+          st.current.downNdc = st.current.ndc.clone();
           gl.domElement.style.cursor = 'grabbing';
         }}
         onPointerOver={() => (gl.domElement.style.cursor = 'grab')}
@@ -137,7 +145,7 @@ function HandFill({ target, active }) {
   const l = useRef();
   useFrame(() => {
     if (!l.current || !target.current) return;
-    l.current.intensity = active && target.current.visible ? 0.35 : 0;
+    l.current.intensity = active && target.current.visible ? 0.2 : 0;
     l.current.position.copy(target.current.position).add(new THREE.Vector3(0.4, 0.5, 0.6));
   });
   return <pointLight ref={l} color="#c9b08a" intensity={0} distance={2.5} decay={2} />;

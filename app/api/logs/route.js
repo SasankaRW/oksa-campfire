@@ -26,7 +26,7 @@ export async function POST(req) {
   if (existing) return Response.json({ log: existing });
 
   const { count } = await db.from('logs').select('id', { count: 'exact', head: true });
-  if ((count || 0) >= 320) return Response.json({ error: 'The fire is full tonight.' }, { status: 429 });
+  if ((count || 0) >= 520) return Response.json({ error: 'The fire is full tonight.' }, { status: 429 });
 
   const { data, error } = await db
     .from('logs')

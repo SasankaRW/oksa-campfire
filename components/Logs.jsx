@@ -9,7 +9,7 @@ import { emit, on, shared } from '@/lib/bus';
 import { makeLogMaterial, logUniforms } from './logMaterial';
 import { playThud } from '@/lib/audio';
 
-const MAX = 320;
+const MAX = 560;
 const NEVER = 1e9;
 const slots = [];
 const getSlot = (i) => slots[i] || (slots[i] = slotFor(i));
