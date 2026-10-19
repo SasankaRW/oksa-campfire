@@ -105,7 +105,12 @@ function CameraRig() {
 
 export default function Scene({ quality = 'high', handActive, onThrow, mySeed }) {
   const hi = quality === 'high';
-  const [dpr, setDpr] = useState(() => Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, hi ? 1.25 : 0.85));
+  // Phones have 2-3x pixel density. Rendering below that looks blurry, so start
+  // sharp and only step down if the frame rate actually drops (and back up when it recovers).
+  const native = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  const maxDpr = Math.min(native, hi ? 1.75 : 1.6);
+  const minDpr = Math.min(native, hi ? 0.9 : 1);
+  const [dpr, setDpr] = useState(maxDpr);
   return (
     <Canvas
       flat
@@ -118,7 +123,11 @@ export default function Scene({ quality = 'high', handActive, onThrow, mySeed })
         scene.fog = new THREE.FogExp2('#070a12', 0.018);
       }}
     >
-      <PerformanceMonitor onDecline={() => setDpr((d) => Math.max(0.6, d - 0.2))} flipflops={4} />
+      <PerformanceMonitor
+        onDecline={() => setDpr((d) => Math.max(minDpr, d - 0.2))}
+        onIncline={() => setDpr((d) => Math.min(maxDpr, d + 0.2))}
+        flipflops={6}
+      />
       <CameraRig />
       <Suspense fallback={null}>
         <Surroundings />
@@ -130,10 +139,11 @@ export default function Scene({ quality = 'high', handActive, onThrow, mySeed })
         <Labels embersOfNames={false} />
       </Suspense>
       <EffectComposer multisampling={0} disableNormalPass>
-        <HeatHaze />
-        <Bloom mipmapBlur intensity={0.7} luminanceThreshold={0.75} luminanceSmoothing={0.2} radius={0.7} />
+        {hi ? <HeatHaze /> : <></>}
+        <Bloom mipmapBlur intensity={0.7} luminanceThreshold={0.75} luminanceSmoothing={0.2} radius={0.7} resolutionScale={hi ? 1 : 0.5} />
         <Vignette offset={0.28} darkness={0.78} />
-        <Noise premultiply blendFunction={BlendFunction.ADD} opacity={0.18} />
+        {/* film grain looks like low resolution on small screens, so only on desktop */}
+        {hi ? <Noise premultiply blendFunction={BlendFunction.ADD} opacity={0.18} /> : <></>}
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>
     </Canvas>
