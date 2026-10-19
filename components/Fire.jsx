@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useStore } from '@/lib/store';
 import { sceneNow, toScene } from '@/lib/clock';
 import { on, shared } from '@/lib/bus';
-import { setFireLevel, playStrike, playWhoosh, playTwang } from '@/lib/audio';
+import { setFireLevel, playStrike, playWhoosh, playTwang, playCheer, playHip } from '@/lib/audio';
 import { pileRadius } from '@/lib/layout';
 
 /* ---------------- shared noise texture (cheap fbm lookups) ---------------- */
@@ -298,11 +298,15 @@ export default function Fire({ quality = 'high' }) {
       state.current.bursts.push({ type: 'dust', at: base.clone(), n: 5 });
       if (shared.lit) state.current.bursts.push({ type: 'sparks', at: center.clone().setY(0.6), n: 30, flare: 0.12 });
     });
+    const offLocal = on('local-burst', () => {
+      state.current.bursts.push({ type: 'sparks', at: new THREE.Vector3((Math.random() - 0.5) * 0.6, 0.9, (Math.random() - 0.5) * 0.6), n: 45, flare: 0.08 });
+    });
     const offHonour = on('honour-landed', ({ at }) => {
       state.current.bursts.push({ type: 'sparks', at, n: shared.lit ? 160 : 60, flare: shared.lit ? 0.3 : 0 });
     });
     return () => {
       offLand();
+      offLocal();
       offHonour();
     };
   }, []);
@@ -393,6 +397,25 @@ export default function Fire({ quality = 'high' }) {
           playWhoosh(0.8);
         }
         S.stokeSeen = f.stoke_at;
+      }
+    }
+    // three cheers: "Hip hip… HOORAY!" x3, each hooray flares the fire
+    if (f.cheer_at && lit) {
+      const c = now - toScene(f.cheer_at);
+      S.cheerDone = S.cheerDone || {};
+      for (let k = 0; k < 3; k++) {
+        const hk = 1.6 + 2.8 * k;
+        target += 0.6 * Math.exp(-Math.pow(c - hk - 0.3, 2) / 0.35);
+        const key = f.cheer_at + ':' + k;
+        if (c >= hk - 1.3 && c < hk - 0.6 && !S.cheerDone[key + 'h']) {
+          S.cheerDone[key + 'h'] = true;
+          playHip();
+        }
+        if (c >= hk && c < hk + 0.8 && !S.cheerDone[key]) {
+          S.cheerDone[key] = true;
+          playCheer(1);
+          S.bursts.push({ type: 'sparks', at: new THREE.Vector3(0, 1.0, 0), n: 330, flare: 0 });
+        }
       }
     }
     for (const b of S.bursts) if (b.flare) target += b.flare;

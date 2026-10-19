@@ -60,6 +60,13 @@ If you set up Supabase before this version, run `supabase/schema.sql` again. It'
 5. The 5 logs form the frame at the heart of the fire, lashed with gold rope once all five are in. They catch first when the fire arrow is shot.
 6. If a leader has trouble with their link, click **Lay for them**. **Undo** resets that one leader.
 
+## After the lighting: memories, cheers and songs
+All controls are in `/admin` once the fire is lit, under **After the lighting**.
+- **Memory photos:** framed photos float up on either side of the fire, one every ~3.6 s, about 3 on screen at once. Everyone sees the same photo at the same moment, and the photos loop.
+  To use your real photos, run `npm run memories -- "C:\path\to\photos"`. This shrinks them to small web images (~50 KB each, so 500 photos ≈ 25 MB) in `public/memories/` and replaces the samples. For captions, add a `captions.csv` to the photo folder with lines like `IMG_0012.jpg,Jamboree · 1995`. Then commit and push.
+- **Three cheers:** type who the cheer is for, then press the button. Everyone sees "Hip hip… HOORAY!" three times; each hooray flares the fire with a burst of sparks and a crowd roar. Guests can tap anywhere to throw extra sparks and clap.
+- **Sing-along:** type the song name and press **Start sing-along**. A song banner appears and fireflies drift around the clearing until you press **End sing-along**. (Do the actual singing on Meet.)
+
 ## Capacity (built for 400 people on free plans)
 - **Live sync:** up to about 200 people get instant live updates (the Supabase free-plan limit). Everyone else is kept in sync automatically by a small check every 3 seconds. The fire is lit at a set time, so everyone still sees it catch together.
 - **Load at 400 people:** about 130 tiny database requests a second during the event, and around 1.5 MB per visitor on Vercel (images are cached). Both are well within the free plans.

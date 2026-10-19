@@ -10,6 +10,8 @@ export default function AdminPanel() {
   const pubLeaders = useStore((s) => s.leaders);
   const [draft, setDraft] = useState(null);
   const [copied, setCopied] = useState(-1);
+  const [cheerText, setCheerText] = useState('Three cheers for Kingswood!');
+  const [songTitle, setSongTitle] = useState('');
   const fire = useStore((s) => s.fire);
   const online = useStore((s) => s.online);
   const demo = useStore((s) => s.demo);
@@ -140,6 +142,37 @@ export default function AdminPanel() {
                 Put it out
               </button>
             </div>
+          )}
+
+          {(lit || counting) && (
+            <>
+              <div className="admin-sub">After the lighting</div>
+              <div className="admin-grid">
+                {!fire.memories_at ? (
+                  <button className="btn" onClick={() => run('memories_start')}>
+                    Start memory photos
+                  </button>
+                ) : (
+                  <button className="btn" onClick={() => run('memories_stop')}>
+                    Stop memory photos
+                  </button>
+                )}
+                <input value={cheerText} onChange={(e) => setCheerText(e.target.value)} placeholder="Cheer for… (optional)" />
+                <button className="btn" onClick={() => run('cheer', { text: cheerText })}>
+                  Three cheers! (Hip hip, hooray ×3)
+                </button>
+                <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Song name" />
+                {!fire.song_at ? (
+                  <button className="btn" onClick={() => run('song_start', { title: songTitle })}>
+                    Start sing-along
+                  </button>
+                ) : (
+                  <button className="btn" onClick={() => run('song_stop')}>
+                    End sing-along
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
           <div className="admin-sub">Leaders' honour logs</div>

@@ -8,6 +8,7 @@ import { emit, shared, setZoom } from '@/lib/bus';
 import { EVENT, MAX_NAME, MAX_MESSAGE } from '@/lib/config';
 import { hash } from '@/lib/layout';
 import AdminPanel from './AdminPanel';
+import Moments from './Moments';
 import { makeKeepsake } from '@/lib/keepsake';
 
 const Scene = dynamic(() => import('./Scene'), { ssr: false });
@@ -163,6 +164,8 @@ export default function Experience({ mode = 'guest' }) {
       {sceneEl}
       <div className={`curtain ${ready ? 'up' : ''}`} />
       <div className={`dim ${counting ? 'on' : ''} ${spot ? 'spot' : ''}`} />
+
+      <Moments now={now} />
 
       {spot && (
         <div className={`honour-card ${spotT > 8 ? 'out' : ''}`} key={spot.slot + '-' + spot.laid_at}>

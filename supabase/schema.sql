@@ -32,6 +32,12 @@ create table if not exists public.fire_state (
 insert into public.fire_state (id) values (1) on conflict (id) do nothing;
 
 alter table public.fire_state add column if not exists leaders_rev integer not null default 0;
+-- after-lighting moments: memory photos, cheers and sing-alongs
+alter table public.fire_state add column if not exists memories_at timestamptz;
+alter table public.fire_state add column if not exists cheer_at timestamptz;
+alter table public.fire_state add column if not exists cheer_text text not null default '';
+alter table public.fire_state add column if not exists song_at timestamptz;
+alter table public.fire_state add column if not exists song_title text not null default '';
 
 -- ---------- the 5 leaders' honour logs (private: links carry a secret token) ----------
 create table if not exists public.leaders (

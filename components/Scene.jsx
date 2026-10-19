@@ -12,6 +12,7 @@ import FireVolume from './FireVolume';
 import { HeatHaze } from './HeatHaze';
 import HandLog from './HandLog';
 import HonourLogs from './HonourLogs';
+import Fireflies from './Fireflies';
 import Labels from './Labels';
 import { shared, setZoom } from '@/lib/bus';
 import { useEffect } from 'react';
@@ -133,6 +134,7 @@ export default function Scene({ quality = 'high', handActive, onThrow, mySeed })
         <Surroundings />
         <Logs />
         <HonourLogs />
+        <Fireflies />
         <Fire quality={quality} />
         <FireVolume quality={quality} />
         <HandLog active={handActive} onThrow={onThrow} seed={mySeed} />

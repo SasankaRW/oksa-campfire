@@ -70,6 +70,21 @@ export async function POST(req) {
     case 'stoke':
       patch = { stoke_at: iso(now) };
       break;
+    case 'memories_start':
+      patch = { memories_at: iso(now + 1500) };
+      break;
+    case 'memories_stop':
+      patch = { memories_at: null };
+      break;
+    case 'cheer':
+      patch = { cheer_at: iso(now + 1200), cheer_text: clean(body.text || '', 80) };
+      break;
+    case 'song_start':
+      patch = { song_at: iso(now), song_title: clean(body.title || '', 80) };
+      break;
+    case 'song_stop':
+      patch = { song_at: null };
+      break;
     case 'embers':
       patch = { mode: cur?.mode === 'embers' ? 'normal' : 'embers' };
       break;
@@ -79,7 +94,7 @@ export async function POST(req) {
     case 'reset':
       await db.from('logs').delete().neq('device_id', '');
       await db.from('leaders').update({ called_at: null, laid_at: null }).gte('slot', 0);
-      patch = { ignite_at: null, stoke_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: (cur?.leaders_rev || 0) + 1 };
+      patch = { ignite_at: null, stoke_at: null, memories_at: null, cheer_at: null, song_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: (cur?.leaders_rev || 0) + 1 };
       break;
     case 'seed': {
       const n = Math.max(1, Math.min(200, Number(body.count || 20)));

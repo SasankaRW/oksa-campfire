@@ -174,3 +174,43 @@ input::placeholder { color: #5a554d; }
 .admin-leaders .tag2 { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.07); color: var(--ink-2); }
 .admin-leaders .tag2.called { background: rgba(255,170,60,.18); color: #ffcf8a; }
 .admin-leaders .tag2.laid { background: rgba(120,200,120,.16); color: #b6e3b0; }
+
+/* ---- memories: framed photos floating over the scene ---- */
+.memories { position: absolute; inset: 0; pointer-events: none; z-index: 8; overflow: hidden; }
+.memory { position: absolute; margin: 0; width: clamp(180px, 21vw, 330px); animation-name: memFloat; animation-timing-function: linear; animation-fill-mode: both; will-change: transform, opacity; }
+@keyframes memFloat {
+  0% { opacity: 0; transform: translateY(50px) scale(0.9) rotate(calc(var(--r) - 2deg)); filter: blur(3px); }
+  10% { opacity: 1; filter: blur(0); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-70px) scale(1.02) rotate(calc(var(--r) + 2deg)); filter: blur(2px); }
+}
+.memory-frame { padding: 11px; border-radius: 3px; background: linear-gradient(135deg, #4a2f18 0%, #24160b 45%, #3d2613 70%, #1b1008 100%); box-shadow: 0 22px 50px rgba(0,0,0,0.65), 0 0 40px rgba(255,140,50,0.12), inset 0 0 0 1px rgba(255,214,150,0.18), inset 0 0 12px rgba(0,0,0,0.6); }
+.memory-mat { background: #efe5cf; padding: 9px 9px 7px; box-shadow: inset 0 0 0 1px rgba(190,150,80,0.9), inset 0 0 18px rgba(120,80,30,0.25); }
+.memory img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; filter: sepia(0.16) saturate(0.95) contrast(1.03) brightness(0.96); box-shadow: 0 0 0 1px rgba(60,40,20,0.5); }
+.memory.pending { visibility: hidden; }
+.memory figcaption { font-family: var(--serif); font-style: italic; font-size: 15px; color: #4a3520; text-align: center; padding-top: 6px; }
+.memory::after { content: ''; position: absolute; inset: 0; border-radius: 3px; background: radial-gradient(ellipse at 50% 120%, rgba(255,140,50,0.22), transparent 60%); mix-blend-mode: soft-light; pointer-events: none; }
+
+/* ---- three cheers ---- */
+.cheer { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 11; }
+.cheer-lead { font-family: var(--serif); font-size: clamp(22px, 3.4vw, 36px); color: #ffe7bf; text-shadow: 0 2px 18px #000; animation: feedIn .6s ease both; margin-bottom: 10px; text-align: center; padding: 0 16px; }
+.cheer-word { font-family: var(--serif); font-style: italic; font-size: clamp(30px, 5vw, 56px); color: #fff0d6; text-shadow: 0 0 30px rgba(255,150,60,.5), 0 2px 14px #000; animation: cheerIn .5s ease-out both; }
+.cheer-word.big { font-style: normal; font-weight: 600; letter-spacing: .02em; font-size: clamp(52px, 10vw, 120px); color: #ffd58a; text-shadow: 0 0 50px rgba(255,140,40,.8), 0 0 12px rgba(255,200,120,.6), 0 4px 20px #000; animation: hooray 1.3s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes cheerIn { from { opacity: 0; transform: translateY(10px); } }
+@keyframes hooray { 0% { opacity: 0; transform: scale(.6); } 25% { opacity: 1; transform: scale(1.08); } 70% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.1) translateY(-20px); } }
+.cheer-tip { position: absolute; bottom: 12vh; font-size: 14px; color: var(--ink-2); text-shadow: 0 1px 8px #000; }
+
+/* ---- sing-along ---- */
+.song { position: absolute; left: 50%; bottom: 11vh; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-radius: 999px; background: rgba(16,12,6,.6); border: 1px solid rgba(226,189,110,.35); backdrop-filter: blur(10px); font-family: var(--serif); font-size: clamp(17px, 2.2vw, 22px); color: #f6e7c9; animation: feedIn .8s ease both; max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.song em { color: #ffd98f; }
+.song-note { font-size: 1.4em; color: #ffcf7a; animation: noteBob 1.6s ease-in-out infinite; }
+@keyframes noteBob { 50% { transform: translateY(-4px) rotate(-8deg); } }
+.ui-hidden .song { opacity: 0; }
+
+@media (max-width: 700px) {
+  .memory { width: 58vw; }
+  .memory.l { left: 6vw !important; }
+  .memory.r { left: 36vw !important; }
+  .memory.pending { visibility: hidden; }
+.memory figcaption { font-size: 13px; }
+}
