@@ -8,6 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import crypto from 'node:crypto';
 
 const src = process.argv[2];
 if (!src) {
@@ -19,7 +20,7 @@ await fs.mkdir(out, { recursive: true });
 
 // remove old generated images (sample-*.webp and m-*.webp)
 for (const f of await fs.readdir(out)) {
-  if (/^(sample|m)-\d+\.webp$/.test(f)) await fs.rm(path.join(out, f));
+  if (/^(sample|m)-\d+(-[0-9a-f]+)?\.webp$/.test(f)) await fs.rm(path.join(out, f));
 }
 
 const captions = {};
@@ -38,14 +39,17 @@ const files = (await fs.readdir(src))
 const photos = [];
 let total = 0;
 for (let i = 0; i < files.length; i++) {
-  const name = `m-${String(i + 1).padStart(4, '0')}.webp`;
   try {
-    const info = await sharp(path.join(src, files[i]))
+    const buf = await sharp(path.join(src, files[i]))
       .rotate() // respect phone orientation
       .resize(1280, 960, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 72 })
-      .toFile(path.join(out, name));
-    total += info.size;
+      .toBuffer();
+    // content hash in the name lets browsers and the CDN cache each photo forever
+    const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 8);
+    const name = `m-${String(i + 1).padStart(4, '0')}-${hash}.webp`;
+    await fs.writeFile(path.join(out, name), buf);
+    total += buf.length;
     photos.push({ src: `/memories/${name}`, caption: captions[files[i]] || '' });
     process.stdout.write(`\r${i + 1}/${files.length}  ${files[i]}                `);
   } catch (e) {

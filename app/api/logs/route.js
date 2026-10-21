@@ -3,6 +3,9 @@ import { clean, isClean } from '@/lib/profanity';
 import { MAX_NAME, MAX_BATCH, MAX_MESSAGE } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
+export const preferredRegion = 'sin1';
+
+const MAX_LOGS = 520;
 
 export async function POST(req) {
   const db = adminClient();
@@ -19,24 +22,22 @@ export async function POST(req) {
   const message = clean(body.message, MAX_MESSAGE);
   if (!deviceId || deviceId.length < 8) return Response.json({ error: 'Bad request' }, { status: 400 });
   if (!name) return Response.json({ error: 'Enter your name.' }, { status: 400 });
-  if (!isClean(name) || !isClean(message))
-    return Response.json({ error: 'Keep it clean, scout.' }, { status: 400 });
+  if (!isClean(name) || !isClean(message)) return Response.json({ error: 'Keep it clean, scout.' }, { status: 400 });
 
-  const { data: existing } = await db.from('logs').select('*').eq('device_id', deviceId).maybeSingle();
+  // one round trip for both checks
+  const [{ data: existing }, { count }] = await Promise.all([
+    db.from('logs').select('*').eq('device_id', deviceId).maybeSingle(),
+    db.from('logs').select('id', { count: 'exact', head: true }),
+  ]);
   if (existing) return Response.json({ log: existing });
+  if ((count || 0) >= MAX_LOGS) return Response.json({ error: 'The fire is full tonight.' }, { status: 429 });
 
-  const { count } = await db.from('logs').select('id', { count: 'exact', head: true });
-  if ((count || 0) >= 520) return Response.json({ error: 'The fire is full tonight.' }, { status: 429 });
-
-  const { data, error } = await db
-    .from('logs')
-    .insert({ device_id: deviceId, name, batch, message })
-    .select()
-    .single();
+  const { data, error } = await db.from('logs').insert({ device_id: deviceId, name, batch, message }).select().single();
   if (error) {
+    // e.g. a double tap raced us: return the log that won
     const { data: again } = await db.from('logs').select('*').eq('device_id', deviceId).maybeSingle();
     if (again) return Response.json({ log: again });
-    return Response.json({ error: 'Could not lay your log. Try again.' }, { status: 500 });
+    return Response.json({ error: 'Could not lay your log. Try again.' }, { status: 503 });
   }
   return Response.json({ log: data });
 }

@@ -2,6 +2,7 @@
 import { adminClient } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+export const preferredRegion = 'sin1';
 
 const pub = (l) => ({ slot: l.slot, name: l.name, title: l.title, called_at: l.called_at, laid_at: l.laid_at });
 

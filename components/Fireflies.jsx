@@ -9,6 +9,7 @@ const N = 140;
 
 export default function Fireflies() {
   const amt = useRef(0);
+  const pts = useRef();
   const { geo, mat } = useMemo(() => {
     const pos = new Float32Array(N * 3);
     const seed = new Float32Array(N);
@@ -48,8 +49,9 @@ export default function Fireflies() {
     const on = !!useStore.getState().fire.song_at;
     amt.current += ((on ? 1 : 0) - amt.current) * Math.min(1, dt * 0.6);
     mat.uniforms.uAmt.value = amt.current;
+    if (pts.current) pts.current.visible = amt.current > 0.01; // no draw cost unless singing
     mat.uniforms.uTime.value = state.clock.elapsedTime;
     mat.uniforms.uPx.value = state.gl.getPixelRatio() * (state.size.height / 800);
   });
-  return <points geometry={geo} material={mat} frustumCulled={false} renderOrder={6} />;
+  return <points ref={pts} geometry={geo} material={mat} frustumCulled={false} renderOrder={6} />;
 }

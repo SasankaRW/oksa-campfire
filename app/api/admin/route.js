@@ -5,6 +5,8 @@ import { randomBytes } from 'crypto';
 import { clean } from '@/lib/profanity';
 
 export const dynamic = 'force-dynamic';
+// Run next to the Supabase database (Singapore) so each query is a few ms, not a trip across the Pacific.
+export const preferredRegion = 'sin1';
 
 function ok(pass) {
   const real = process.env.ADMIN_PASSCODE || '';
@@ -15,23 +17,30 @@ function ok(pass) {
 }
 
 export async function POST(req) {
-  const db = adminClient();
-  if (!db) return Response.json({ error: 'Server is not configured.' }, { status: 500 });
   const body = await req.json().catch(() => ({}));
   if (!ok(body.passcode)) return Response.json({ error: 'Wrong passcode.' }, { status: 401 });
+  // keeps the function warm while the admin page is open (no database work)
+  if (body.action === 'ping') return Response.json({ ok: true });
+  const db = adminClient();
+  if (!db) return Response.json({ error: 'Server is not configured.' }, { status: 500 });
 
   const now = Date.now();
   const iso = (ms) => new Date(ms).toISOString();
-  const { data: cur } = await db.from('fire_state').select('*').eq('id', 1).single();
   let patch = null;
 
-  const bump = async () =>
-    db.from('fire_state').update({ leaders_rev: (cur?.leaders_rev || 0) + 1, updated_at: iso(now) }).eq('id', 1);
+  // any new value tells every screen "leaders changed, refresh" (no read needed first)
+  const rev = now % 2000000000;
+  const bump = () => db.from('fire_state').update({ leaders_rev: rev, updated_at: iso(now) }).eq('id', 1);
   const listLeaders = async () => (await db.from('leaders').select('*').order('slot')).data || [];
 
   switch (body.action) {
-    case 'login':
-      return Response.json({ ok: true, fire: cur, leaders: await listLeaders() });
+    case 'login': {
+      const [{ data: cur }, leaders] = await Promise.all([
+        db.from('fire_state').select('*').eq('id', 1).single(),
+        listLeaders(),
+      ]);
+      return Response.json({ ok: true, fire: cur, leaders });
+    }
     case 'leaders_save': {
       const existing = await listLeaders();
       const rows = (body.leaders || []).slice(0, 5).map((l, slot) => ({
@@ -41,8 +50,7 @@ export async function POST(req) {
         token: existing.find((e) => e.slot === slot)?.token || randomBytes(12).toString('hex'),
         updated_at: iso(now),
       }));
-      await db.from('leaders').upsert(rows, { onConflict: 'slot' });
-      await bump();
+      await Promise.all([db.from('leaders').upsert(rows, { onConflict: 'slot' }), bump()]);
       return Response.json({ ok: true, leaders: await listLeaders() });
     }
     case 'leader_call':
@@ -55,8 +63,7 @@ export async function POST(req) {
           : body.action === 'leader_lay'
             ? { called_at: iso(now), laid_at: iso(now) }
             : { called_at: null, laid_at: null };
-      await db.from('leaders').update({ ...patch, updated_at: iso(now) }).eq('slot', slot);
-      await bump();
+      await Promise.all([db.from('leaders').update({ ...patch, updated_at: iso(now) }).eq('slot', slot), bump()]);
       return Response.json({ ok: true, leaders: await listLeaders() });
     }
     case 'ignite': {
@@ -86,15 +93,17 @@ export async function POST(req) {
       patch = { song_at: null };
       break;
     case 'embers':
-      patch = { mode: cur?.mode === 'embers' ? 'normal' : 'embers' };
+      patch = { mode: body.mode === 'embers' ? 'embers' : 'normal' };
       break;
     case 'hide':
       await db.from('logs').update({ hidden: true }).eq('id', body.id);
       return Response.json({ ok: true });
     case 'reset':
-      await db.from('logs').delete().neq('device_id', '');
-      await db.from('leaders').update({ called_at: null, laid_at: null }).gte('slot', 0);
-      patch = { ignite_at: null, stoke_at: null, memories_at: null, cheer_at: null, song_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: (cur?.leaders_rev || 0) + 1 };
+      await Promise.all([
+        db.from('logs').delete().neq('device_id', ''),
+        db.from('leaders').update({ called_at: null, laid_at: null }).gte('slot', 0),
+      ]);
+      patch = { ignite_at: null, stoke_at: null, memories_at: null, cheer_at: null, song_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: rev };
       break;
     case 'seed': {
       const n = Math.max(1, Math.min(200, Number(body.count || 20)));

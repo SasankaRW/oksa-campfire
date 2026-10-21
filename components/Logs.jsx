@@ -75,6 +75,7 @@ export default function Logs() {
   const known = useRef(new Map());
   const initial = useRef(true);
   const highlight = useRef({ until: 0 });
+  const kIgnFor = useRef(null);
 
   useEffect(() => {
     const m = kMesh.current;
@@ -108,6 +109,9 @@ export default function Logs() {
     }
 
     let mineIdx = -1;
+    let matDirty = false;
+    let ignDirty = false;
+    let attrDirty = false;
     const n = Math.min(logs.length, MAX);
     for (let i = 0; i < n; i++) {
       const log = logs[i];
@@ -152,6 +156,8 @@ export default function Logs() {
         s.landed = false;
         s.quiet = true;
         s.idx = i;
+        s.written = -1;
+        s.wroteOnce = false;
       }
 
       if (!s.landed) {
@@ -177,6 +183,8 @@ export default function Logs() {
           tmpQ.multiply(spinQ);
           tmpM.compose(tmpP, tmpQ, slot.scale);
         }
+      } else if (s.written === i) {
+        // resting log already in the buffer: nothing to do
       } else {
         // settle: a short damped wobble after landing
         const t = now - s.landT;
@@ -189,27 +197,48 @@ export default function Logs() {
           tmpM.compose(tmpP, tmpQ, slot.scale);
         } else {
           tmpM.compose(slot.position, slot.quaternion, slot.scale);
+          s.written = i;
         }
       }
-      m.setMatrixAt(i, tmpM);
-      aSeed[i] = slot.seed;
-      aLen[i] = slot.len;
-      aRad[i] = slot.radius;
-      aIgn[i] = s.landed || s.landT > -NEVER ? igniteTimeFor(i, s.landT) : NEVER;
+      if (!(s.landed && s.written === i && s.wroteOnce)) {
+        m.setMatrixAt(i, tmpM);
+        matDirty = true;
+        if (s.written === i) s.wroteOnce = true;
+      }
+      if (aSeed[i] !== slot.seed || aLen[i] !== slot.len) {
+        aSeed[i] = slot.seed;
+        aLen[i] = slot.len;
+        aRad[i] = slot.radius;
+        attrDirty = true;
+      }
+      const ign = s.landed || s.landT > -NEVER ? igniteTimeFor(i, s.landT) : NEVER;
+      if (Math.abs(aIgn[i] - ign) > 0.001) {
+        aIgn[i] = ign;
+        ignDirty = true;
+      }
     }
-    m.count = n;
-    m.instanceMatrix.needsUpdate = true;
-    geometry.attributes.aIgnite.needsUpdate = true;
-    geometry.attributes.aSeed.needsUpdate = true;
-    geometry.attributes.aLen.needsUpdate = true;
-    geometry.attributes.aRad.needsUpdate = true;
+    if (m.count !== n) {
+      m.count = n;
+      matDirty = true;
+    }
+    // only upload what changed (saves a lot with hundreds of logs)
+    if (matDirty) m.instanceMatrix.needsUpdate = true;
+    if (ignDirty) geometry.attributes.aIgnite.needsUpdate = true;
+    if (attrDirty) {
+      geometry.attributes.aSeed.needsUpdate = true;
+      geometry.attributes.aLen.needsUpdate = true;
+      geometry.attributes.aRad.needsUpdate = true;
+    }
 
     // kindling
     const f = st.fire;
     const kIgn = kGeometry.attributes.aIgnite.array;
     const ig = f.ignite_at ? toScene(f.ignite_at) : NEVER;
-    for (let i = 0; i < kind.length; i++) kIgn[i] = ig === NEVER ? NEVER : ig + hash(i + 31) * 1.2;
-    kGeometry.attributes.aIgnite.needsUpdate = true;
+    if (kIgnFor.current !== ig) {
+      kIgnFor.current = ig;
+      for (let i = 0; i < kind.length; i++) kIgn[i] = ig === NEVER ? NEVER : ig + hash(i + 31) * 1.2;
+      kGeometry.attributes.aIgnite.needsUpdate = true;
+    }
 
     // ember glow is stronger once the fire dies down
     const target = f.mode === 'embers' ? 2.2 : 1.0;

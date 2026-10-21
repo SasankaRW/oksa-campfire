@@ -9,6 +9,7 @@ import { EVENT, MAX_NAME, MAX_MESSAGE } from '@/lib/config';
 import { hash } from '@/lib/layout';
 import AdminPanel from './AdminPanel';
 import Moments from './Moments';
+import SceneGuard from './SceneGuard';
 import { makeKeepsake } from '@/lib/keepsake';
 
 const Scene = dynamic(() => import('./Scene'), { ssr: false });
@@ -51,7 +52,13 @@ export default function Experience({ mode = 'guest' }) {
   const [leaderMe, setLeaderMe] = useState(null); // { slot, name, title } or { error }
   const [leaderBusy, setLeaderBusy] = useState(false);
   const leaders = useStore((s) => s.leaders);
-  useTick(200);
+  // Re-render quickly only while something is counting down or animating on screen.
+  const _t = Date.now() + useStore.getState().offset;
+  const _busy =
+    (fire.ignite_at && fire.ignite_at > _t - 2000 && fire.ignite_at - _t < 61000) ||
+    (fire.cheer_at && _t - fire.cheer_at < 12000) ||
+    useStore.getState().leaders.some((l) => l.laid_at && _t - l.laid_at < 10000);
+  useTick(_busy ? 200 : fire.memories_at ? 500 : 1000);
 
   useEffect(() => {
     setQuality(detectQuality());
@@ -161,7 +168,7 @@ export default function Experience({ mode = 'guest' }) {
 
   return (
     <main className={`stage ${hideUi ? 'ui-hidden' : ''}`}>
-      {sceneEl}
+      <SceneGuard>{sceneEl}</SceneGuard>
       <div className={`curtain ${ready ? 'up' : ''}`} />
       <div className={`dim ${counting ? 'on' : ''} ${spot ? 'spot' : ''}`} />
 
