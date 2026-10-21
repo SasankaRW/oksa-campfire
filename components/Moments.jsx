@@ -2,7 +2,7 @@
 // After the fire is lit: framed memory photos floating over the scene,
 // "three cheers", and the sing-along banner. All timed from shared server
 // timestamps so every screen shows the same thing at the same moment.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { emit } from '@/lib/bus';
 import { playClap } from '@/lib/audio';
@@ -106,32 +106,9 @@ export default function Moments({ now }) {
   return (
     <>
       <div className="memories" aria-hidden="true">
-        {mem.map(({ k, p, age }) => {
-          const left = k % 2 === 0;
-          const r = (hash(k) - 0.5) * 7;
-          const x = left ? 3 + hash(k + 3) * 16 : 63 + hash(k + 3) * 16;
-          const y = 14 + hash(k + 7) * 30;
-          return (
-            <figure
-              key={k}
-              className={`memory ${left ? 'l' : 'r'} ${loaded.has(p.src) ? '' : 'pending'}`}
-              style={{
-                left: `${x}vw`,
-                top: `${y}vh`,
-                '--r': `${r}deg`,
-                animationDuration: `${LIFE}s`,
-                animationDelay: `${-age}s`,
-              }}
-            >
-              <div className="memory-frame">
-                <div className="memory-mat">
-                  <img src={p.src} alt="" decoding="sync" />
-                  {p.caption ? <figcaption>{p.caption}</figcaption> : null}
-                </div>
-              </div>
-            </figure>
-          );
-        })}
+        {mem.map(({ k, p, age }) => (
+          <MemoryPhoto key={k} k={k} src={p.src} caption={p.caption} age={age} ready={loaded.has(p.src)} />
+        ))}
       </div>
 
       {cheerOn && (
@@ -157,3 +134,37 @@ export default function Moments({ now }) {
     </>
   );
 }
+
+// Each photo fixes its timing once, when it first appears. Its style never
+// changes after that, so the browser runs the float animation smoothly on the
+// GPU instead of restarting it on every update (which caused the little jumps).
+const MemoryPhoto = memo(
+  function MemoryPhoto({ k, src, caption, age, ready }) {
+    const [start] = useState(() => age);
+    const left = k % 2 === 0;
+    const r = (hash(k) - 0.5) * 7;
+    const x = left ? 3 + hash(k + 3) * 16 : 63 + hash(k + 3) * 16;
+    const y = 14 + hash(k + 7) * 30;
+    return (
+      <figure
+        className={`memory ${left ? 'l' : 'r'} ${ready ? '' : 'pending'}`}
+        style={{
+          left: `${x}vw`,
+          top: `${y}vh`,
+          '--r': `${r}deg`,
+          animationDuration: `${LIFE}s`,
+          animationDelay: `${-start}s`,
+          animationPlayState: ready ? 'running' : 'paused',
+        }}
+      >
+        <div className="memory-frame">
+          <div className="memory-mat">
+            <img src={src} alt="" decoding="sync" />
+            {caption ? <figcaption>{caption}</figcaption> : null}
+          </div>
+        </div>
+      </figure>
+    );
+  },
+  (a, b) => a.k === b.k && a.ready === b.ready && a.src === b.src,
+);
