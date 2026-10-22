@@ -51,6 +51,7 @@ export default function Experience({ mode = 'guest' }) {
   const [leaderToken, setLeaderToken] = useState(null);
   const [leaderMe, setLeaderMe] = useState(null); // { slot, name, title } or { error }
   const [leaderBusy, setLeaderBusy] = useState(false);
+  const [keepBusy, setKeepBusy] = useState(false);
   const leaders = useStore((s) => s.leaders);
   // Re-render quickly only while something is counting down or animating on screen.
   const _t = Date.now() + useStore.getState().offset;
@@ -326,8 +327,20 @@ export default function Experience({ mode = 'guest' }) {
               Find my log
             </button>
             {lit && (
-              <button className="btn ghost" onClick={() => makeKeepsake(mine, logs.indexOf(mine) + 1)}>
-                Keepsake
+              <button
+                className="btn ghost"
+                disabled={keepBusy}
+                onClick={async () => {
+                  setKeepBusy(true);
+                  try {
+                    await makeKeepsake(mine, logs.indexOf(mine) + 1);
+                  } finally {
+                    setKeepBusy(false);
+                  }
+                }}
+              >
+                {keepBusy ? <span className="spin" aria-hidden="true" /> : null}
+                {keepBusy ? 'Framing…' : 'Keepsake'}
               </button>
             )}
           </div>

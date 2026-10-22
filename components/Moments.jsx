@@ -5,6 +5,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { emit } from '@/lib/bus';
+import { BEAT } from '@/lib/beat';
 import { playClap } from '@/lib/audio';
 
 const INTERVAL = 3.6; // seconds between photos
@@ -45,6 +46,7 @@ export default function Moments({ now }) {
   }, []);
 
   /* ---------- memories ---------- */
+  const portrait = typeof window !== 'undefined' && window.innerWidth / window.innerHeight < 0.9;
   const mem = useMemo(() => {
     if (!fire.memories_at || !photos.length) return [];
     const t = (now - fire.memories_at) / 1000;
@@ -106,9 +108,11 @@ export default function Moments({ now }) {
   return (
     <>
       <div className="memories" aria-hidden="true">
-        {mem.map(({ k, p, age }) => (
-          <MemoryPhoto key={k} k={k} src={p.src} caption={p.caption} age={age} ready={loaded.has(p.src)} />
-        ))}
+        {mem
+          .filter(({ k }) => !(portrait && k % 3 === 2)) // phones: two at a time
+          .map(({ k, p, age }) => (
+            <MemoryPhoto key={k} k={k} src={p.src} caption={p.caption} age={age} ready={loaded.has(p.src)} portrait={portrait} />
+          ))}
       </div>
 
       {cheerOn && (
@@ -123,14 +127,7 @@ export default function Moments({ now }) {
         </div>
       )}
 
-      {song && (
-        <div className="song">
-          <span className="song-note">♪</span>
-          <span>
-            Sing along · <em>{song}</em>
-          </span>
-        </div>
-      )}
+      {song && <SongLayer key={fire.song_at} songAt={fire.song_at} title={song} />}
     </>
   );
 }
@@ -138,13 +135,28 @@ export default function Moments({ now }) {
 // Each photo fixes its timing once, when it first appears. Its style never
 // changes after that, so the browser runs the float animation smoothly on the
 // GPU instead of restarting it on every update (which caused the little jumps).
+// Photos rotate through fixed "safe" spots that never cover the fire, the title,
+// the counters or the feed, and the photos on screen at the same time never share a spot.
+const DESKTOP_SLOTS = [
+  { x: 6, y: 16 }, // left, high (below the title)
+  { x: 74, y: 52 }, // right, lower
+  { x: 7, y: 50 }, // left, lower
+  { x: 73, y: 18 }, // right, high (below the counter)
+];
+const PHONE_SLOTS = [
+  { x: 5, y: 18 }, // left, below the title and the "laid a log" line
+  { x: 53, y: 19 }, // right, a touch lower, clear of the zoom buttons
+];
+
 const MemoryPhoto = memo(
-  function MemoryPhoto({ k, src, caption, age, ready }) {
+  function MemoryPhoto({ k, src, caption, age, ready, portrait }) {
     const [start] = useState(() => age);
-    const left = k % 2 === 0;
-    const r = (hash(k) - 0.5) * 7;
-    const x = left ? 3 + hash(k + 3) * 16 : 63 + hash(k + 3) * 16;
-    const y = 14 + hash(k + 7) * 30;
+    const slots = portrait ? PHONE_SLOTS : DESKTOP_SLOTS;
+    const slot = portrait ? slots[(k % 3) % 2] : slots[k % slots.length];
+    const left = slot.x < 50;
+    const r = (hash(k) - 0.5) * 6;
+    const x = slot.x + (hash(k + 3) - 0.5) * (portrait ? 1.5 : 4);
+    const y = slot.y + (hash(k + 7) - 0.5) * 2;
     return (
       <figure
         className={`memory ${left ? 'l' : 'r'} ${ready ? '' : 'pending'}`}
@@ -166,5 +178,78 @@ const MemoryPhoto = memo(
       </figure>
     );
   },
-  (a, b) => a.k === b.k && a.ready === b.ready && a.src === b.src,
+  (a, b) => a.k === b.k && a.ready === b.ready && a.src === b.src && a.portrait === b.portrait,
 );
+
+// Sing-along: notes rising from the fire, a warm glow and a banner that pulse
+// on a shared beat, and tap-anywhere to clap along. Everything is pure CSS
+// animation started once with a delay that lines it up with the shared beat,
+// so it costs nothing per frame and stays in step on every screen.
+const NOTE_GLYPHS = ['♪', '♫', '♩', '♬'];
+const NOTES = Array.from({ length: 14 }, (_, i) => {
+  const beats = 6 + Math.floor(hash(i + 50) * 4); // each note lives 6-9 beats
+  return {
+    i,
+    g: NOTE_GLYPHS[i % 4],
+    x: 50 + (hash(i + 10) - 0.5) * 26, // vw, around the fire
+    sx: (hash(i + 20) - 0.5) * 12, // vw, sway
+    size: 20 + hash(i + 30) * 22,
+    dur: beats * BEAT,
+    d: Math.floor(hash(i + 40) * 8) * BEAT * 0.5, // start on a half-beat
+  };
+});
+const EQ = [1, 0.5, 1, 0.5, 1];
+
+const SongLayer = memo(function SongLayer({ songAt, title }) {
+  const [bd] = useState(() => {
+    const t = (useStore.getState().now() - songAt) / 1000;
+    return -(((t % BEAT) + BEAT) % BEAT); // line the CSS beat up with the shared one
+  });
+  const [taps, setTaps] = useState([]);
+  useEffect(() => {
+    let id = 0;
+    const tap = (e) => {
+      if (e.target.closest('button, input, select, a, .admin, .admin-toggle')) return;
+      playClap();
+      emit('song-tap');
+      const n = { id: ++id, x: e.clientX, y: e.clientY, g: NOTE_GLYPHS[id % 4] };
+      setTaps((t) => [...t.slice(-6), n]);
+      setTimeout(() => setTaps((t) => t.filter((q) => q.id !== n.id)), 1200);
+    };
+    window.addEventListener('pointerdown', tap, true);
+    return () => window.removeEventListener('pointerdown', tap, true);
+  }, []);
+  return (
+    <div className="song-layer" style={{ '--beat': `${BEAT}s`, '--bd': `${bd}s` }} aria-live="polite">
+      <div className="song-glow" />
+      <div className="song-notes" aria-hidden="true">
+        {NOTES.map((n) => (
+          <span
+            key={n.i}
+            style={{ left: `${n.x}vw`, fontSize: `${n.size}px`, '--sx': `${n.sx}vw`, '--dur': `${n.dur}s`, '--d': `${n.d}s` }}
+          >
+            {n.g}
+          </span>
+        ))}
+      </div>
+      {taps.map((t) => (
+        <span key={t.id} className="tap-note" style={{ left: t.x, top: t.y }} aria-hidden="true">
+          {t.g}
+        </span>
+      ))}
+      <div className="song-wrap">
+        <div className="song">
+          <span className="eq" aria-hidden="true">
+            {EQ.map((_, i) => (
+              <i key={i} style={{ '--d': `${i % 2 ? BEAT / 2 : 0}s`, animationDuration: `${i % 2 ? BEAT / 2 : BEAT}s` }} />
+            ))}
+          </span>
+          <span className="song-text">
+            Sing along · <em>{title}</em>
+          </span>
+        </div>
+        <div className="song-tip">Tap anywhere to clap along</div>
+      </div>
+    </div>
+  );
+});

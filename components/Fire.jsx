@@ -2,6 +2,7 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { songBeat } from '@/lib/beat';
 import { useStore } from '@/lib/store';
 import { sceneNow, toScene } from '@/lib/clock';
 import { on, shared } from '@/lib/bus';
@@ -91,8 +92,8 @@ void main(){
   float edge = smoothstep(0.0, 0.28, vUv.y) * smoothstep(1.0, 0.8, vUv.y) * smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
   float a = body * fadeIn * fadeOut * edge;
   float heat = clamp(a * vHeat * (1.35 - vAge) + (1.0 - y01) * 0.2 * a, 0.0, 1.0);
-  vec3 c = mix(vec3(0.30, 0.025, 0.0), vec3(1.0, 0.24, 0.02), smoothstep(0.0, 0.3, heat));
-  c = mix(c, vec3(1.0, 0.55, 0.12), smoothstep(0.3, 0.65, heat));
+  vec3 c = mix(vec3(0.22, 0.015, 0.0), vec3(0.95, 0.2, 0.015), smoothstep(0.0, 0.3, heat));
+  c = mix(c, vec3(1.0, 0.5, 0.1), smoothstep(0.3, 0.65, heat));
   c = mix(c, vec3(1.0, 0.8, 0.45), smoothstep(0.75, 1.0, heat));
   gl_FragColor = vec4(c * a * uBright, 1.0);
 }`;
@@ -301,12 +302,17 @@ export default function Fire({ quality = 'high' }) {
     const offLocal = on('local-burst', () => {
       state.current.bursts.push({ type: 'sparks', at: new THREE.Vector3((Math.random() - 0.5) * 0.6, 0.9, (Math.random() - 0.5) * 0.6), n: 45, flare: 0.08 });
     });
+    const offSongTap = on('song-tap', () => {
+      if (!shared.lit) return;
+      state.current.bursts.push({ type: 'sparks', at: new THREE.Vector3((Math.random() - 0.5) * 0.5, 1.0, (Math.random() - 0.5) * 0.5), n: 16, flare: 0.04 });
+    });
     const offHonour = on('honour-landed', ({ at }) => {
       state.current.bursts.push({ type: 'sparks', at, n: shared.lit ? 160 : 60, flare: shared.lit ? 0.3 : 0 });
     });
     return () => {
       offLand();
       offLocal();
+      offSongTap();
       offHonour();
     };
   }, []);
@@ -416,6 +422,22 @@ export default function Fire({ quality = 'high' }) {
           playCheer(1);
           S.bursts.push({ type: 'sparks', at: new THREE.Vector3(0, 1.0, 0), n: 330, flare: 0 });
         }
+      }
+    }
+    // sing-along: the fire breathes with the beat and throws sparks on the bar
+    const sb = lit && f.mode !== 'embers' ? songBeat(now) : null;
+    if (sb) {
+      const ramp = Math.min(1, sb.t / 4);
+      const bar = sb.beat % 4 === 0;
+      target += ramp * (0.06 + (bar ? 0.3 : 0.14) * Math.exp(-sb.phase * 4));
+      if (S.songBeat !== sb.beat) {
+        S.songBeat = sb.beat;
+        S.bursts.push({
+          type: 'sparks',
+          at: new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.9, (Math.random() - 0.5) * 0.4),
+          n: Math.round((bar ? 80 : sb.beat % 2 === 0 ? 26 : 10) * ramp),
+          flare: 0,
+        });
       }
     }
     for (const b of S.bursts) if (b.flare) target += b.flare;

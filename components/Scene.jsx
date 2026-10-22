@@ -14,6 +14,7 @@ import HandLog from './HandLog';
 import HonourLogs from './HonourLogs';
 import Fireflies from './Fireflies';
 import Labels from './Labels';
+import { songBeat, BEAT } from '@/lib/beat';
 import { shared, setZoom } from '@/lib/bus';
 import { useEffect } from 'react';
 import { sceneNow } from '@/lib/clock';
@@ -74,6 +75,7 @@ function CameraRig() {
   useZoomControls();
   const zoomS = useRef(1);
   const spotS = useRef(0);
+  const songS = useRef(0);
   const pointer = useRef(new THREE.Vector2());
   const look = useRef(new THREE.Vector3(0, 1.2, 0));
   useFrame((state, dt) => {
@@ -88,13 +90,36 @@ function CameraRig() {
     const zTarget = shared.zoom * (1 - 0.38 * spotS.current);
     zoomS.current += (zTarget - zoomS.current) * (1 - Math.exp(-dt * 3));
     const z = zoomS.current;
-    const dist = ((portrait ? 13.5 : 10.2) - Math.min(I, 1.2) * 0.3) * z;
-    const x = (Math.sin(t * 0.045) * 0.6 + pointer.current.x * 0.6) * Math.min(1, z);
+    let dist = ((portrait ? 13.5 : 10.2) - Math.min(I, 1.2) * 0.3) * z;
+    let x = (Math.sin(t * 0.045) * 0.6 + pointer.current.x * 0.6) * Math.min(1, z);
     // closer = lower and looking at the flames; further = higher, more valley
-    const y = 1.2 + 2.1 * z + Math.sin(t * 0.083) * 0.08 + pointer.current.y * 0.2;
-    camera.position.lerp(new THREE.Vector3(x, y, dist), 1 - Math.exp(-dt * 4));
+    let y = 1.2 + 2.1 * z + Math.sin(t * 0.083) * 0.08 + pointer.current.y * 0.2;
+    let speed = 4;
+    // sing-along: the view sways gently side to side, like a circle of people swaying
+    const sb = songBeat(t);
+    songS.current += ((sb ? Math.min(1, sb.t / 3) : 0) - songS.current) * (1 - Math.exp(-dt * 1.2));
+    const sw = songS.current;
+    let roll = 0;
+    if (sw > 0.001) {
+      const st = sb ? sb.t : 0;
+      const ph = (st / (BEAT * 4)) * Math.PI * 2; // one sway every bar
+      x += Math.sin(ph) * 0.55 * sw;
+      y += Math.abs(Math.sin((st / BEAT) * Math.PI)) * 0.05 * sw;
+      roll = Math.sin(ph) * 0.018 * sw;
+      speed = 6;
+    }
     look.current.set(0, 1.05 + 0.4 * Math.min(z, 1.2) + Math.min(I, 1.2) * 0.1 + spotS.current * 0.7, -2 * Math.min(1, z));
+    if (shared.keepsake) {
+      // a flattering, steady close-up of the fire for the keepsake photo
+      dist = portrait ? 8.4 : 6.6;
+      x = 0;
+      y = 2.0;
+      speed = 7;
+      look.current.set(0, 1.25 + Math.min(I, 1.2) * 0.15, -0.6);
+    }
+    camera.position.lerp(new THREE.Vector3(x, y, dist), 1 - Math.exp(-dt * speed));
     camera.lookAt(look.current);
+    if (roll && !shared.keepsake) camera.rotateZ(roll);
     const fov = portrait ? 60 : 42;
     if (Math.abs(camera.fov - fov) > 0.01) {
       camera.fov = fov;
@@ -112,6 +137,12 @@ export default function Scene({ quality = 'high', handActive, onThrow, mySeed })
   const maxDpr = Math.min(native, hi ? 1.75 : 1.6);
   const minDpr = Math.min(native, hi ? 0.9 : 1);
   const [dpr, setDpr] = useState(maxDpr);
+  // the keepsake temporarily renders at full sharpness
+  shared.setSharp = (on) => {
+    // phones get enough pixels for a crisp 1080px card, even on low-density screens
+    const short = Math.min(window.innerWidth, window.innerHeight) || 1000;
+    setDpr(on ? Math.min(3, Math.max(Math.min(native, 2), 1100 / short)) : maxDpr);
+  };
   return (
     <Canvas
       flat
