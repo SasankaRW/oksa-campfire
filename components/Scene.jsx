@@ -13,11 +13,13 @@ import { HeatHaze } from './HeatHaze';
 import HandLog from './HandLog';
 import HonourLogs from './HonourLogs';
 import Fireflies from './Fireflies';
+import MemorySky from './MemorySky';
 import Labels from './Labels';
 import { songBeat, BEAT } from '@/lib/beat';
 import { shared, setZoom } from '@/lib/bus';
 import { useEffect } from 'react';
 import { sceneNow } from '@/lib/clock';
+import { useStore } from '@/lib/store';
 
 function useZoomControls() {
   const { gl } = useThree();
@@ -76,6 +78,7 @@ function CameraRig() {
   const zoomS = useRef(1);
   const spotS = useRef(0);
   const songS = useRef(0);
+  const memS = useRef(0);
   const pointer = useRef(new THREE.Vector2());
   const look = useRef(new THREE.Vector3(0, 1.2, 0));
   useFrame((state, dt) => {
@@ -90,7 +93,11 @@ function CameraRig() {
     const zTarget = shared.zoom * (1 - 0.38 * spotS.current);
     zoomS.current += (zTarget - zoomS.current) * (1 - Math.exp(-dt * 3));
     const z = zoomS.current;
-    let dist = ((portrait ? 13.5 : 10.2) - Math.min(I, 1.2) * 0.3) * z;
+    // memory photos: pull back and tilt up to the sky, so the fire sits small at the bottom
+    const memOn = !!useStore.getState().fire.memories_at;
+    memS.current += ((memOn ? 1 : 0) - memS.current) * (1 - Math.exp(-dt * 0.8));
+    const m = memS.current * (1 - spotS.current);
+    let dist = ((portrait ? 13.5 : 10.2) - Math.min(I, 1.2) * 0.3) * z * (1 + (portrait ? 0.55 : 0.7) * m);
     let x = (Math.sin(t * 0.045) * 0.6 + pointer.current.x * 0.6) * Math.min(1, z);
     // closer = lower and looking at the flames; further = higher, more valley
     let y = 1.2 + 2.1 * z + Math.sin(t * 0.083) * 0.08 + pointer.current.y * 0.2;
@@ -108,7 +115,12 @@ function CameraRig() {
       roll = Math.sin(ph) * 0.018 * sw;
       speed = 6;
     }
-    look.current.set(0, 1.05 + 0.4 * Math.min(z, 1.2) + Math.min(I, 1.2) * 0.1 + spotS.current * 0.7, -2 * Math.min(1, z));
+    y -= m * 1.2;
+    look.current.set(
+      0,
+      1.05 + 0.4 * Math.min(z, 1.2) + Math.min(I, 1.2) * 0.1 + spotS.current * 0.7 + m * (portrait ? 6.5 : 4.8),
+      -2 * Math.min(1, z),
+    );
     if (shared.keepsake) {
       // a flattering, steady close-up of the fire for the keepsake photo
       dist = portrait ? 8.4 : 6.6;
@@ -163,6 +175,7 @@ export default function Scene({ quality = 'high', handActive, onThrow, mySeed })
       <CameraRig />
       <Suspense fallback={null}>
         <Surroundings />
+        <MemorySky />
         <Logs />
         <HonourLogs />
         <Fireflies />

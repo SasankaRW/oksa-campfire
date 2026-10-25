@@ -1,52 +1,40 @@
 {
  "photos": [
   {
-   "src": "/memories/sample-01.webp",
-   "caption": "Camp at dawn \u00b7 1987"
+   "src": "/memories/m-0001-d636ce32.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-02.webp",
-   "caption": "Troop on the trail \u00b7 1992"
+   "src": "/memories/m-0002-a1e7174f.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-03.webp",
-   "caption": "Jamboree \u00b7 1995"
+   "src": "/memories/m-0003-a8c7b461.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-04.webp",
-   "caption": "Around the fire \u00b7 1998"
+   "src": "/memories/m-0004-8469f028.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-05.webp",
-   "caption": "Patrol leaders \u00b7 2001"
+   "src": "/memories/m-0005-16463818.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-06.webp",
-   "caption": "Hike to the peak \u00b7 2004"
+   "src": "/memories/m-0006-487be94d.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-07.webp",
-   "caption": "Tents by the lake \u00b7 2007"
+   "src": "/memories/m-0007-bae5bc8e.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-08.webp",
-   "caption": "Flag ceremony \u00b7 2010"
+   "src": "/memories/m-0008-a01d5282.webp",
+   "caption": ""
   },
   {
-   "src": "/memories/sample-09.webp",
-   "caption": "Night watch \u00b7 2013"
-  },
-  {
-   "src": "/memories/sample-10.webp",
-   "caption": "Rope bridge \u00b7 2016"
-  },
-  {
-   "src": "/memories/sample-11.webp",
-   "caption": "Old friends \u00b7 2019"
-  },
-  {
-   "src": "/memories/sample-12.webp",
-   "caption": "The last campfire \u00b7 2023"
+   "src": "/memories/m-0009-580e243a.webp",
+   "caption": ""
   }
  ]
 }

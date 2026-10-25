@@ -1,15 +1,12 @@
 'use client';
-// After the fire is lit: framed memory photos floating over the scene,
-// "three cheers", and the sing-along banner. All timed from shared server
+// After the fire is lit: "three cheers" and the sing-along banner
+// (memory photos are drawn in the sky by MemorySky). All timed from shared server
 // timestamps so every screen shows the same thing at the same moment.
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { emit } from '@/lib/bus';
 import { BEAT } from '@/lib/beat';
 import { playClap } from '@/lib/audio';
-
-const INTERVAL = 3.6; // seconds between photos
-const LIFE = 11; // seconds each photo stays on screen
 
 function hash(n) {
   const s = Math.sin(n * 91.7 + 12.3) * 43758.5453;
@@ -18,60 +15,6 @@ function hash(n) {
 
 export default function Moments({ now }) {
   const fire = useStore((s) => s.fire);
-  const [photos, setPhotos] = useState([]);
-  const preloaded = useRef(new Set());
-  const [loaded, setLoaded] = useState(() => new Set());
-  const markLoaded = (src) =>
-    setLoaded((prev) => {
-      if (prev.has(src)) return prev;
-      const n = new Set(prev);
-      n.add(src);
-      return n;
-    });
-
-  useEffect(() => {
-    fetch('/memories/manifest.json')
-      .then((r) => r.json())
-      .then((j) => {
-        const list = j.photos || [];
-        setPhotos(list);
-        list.slice(0, 4).forEach((p) => {
-          preloaded.current.add(p.src);
-          const img = new Image();
-          img.src = p.src;
-          img.decode().then(() => markLoaded(p.src)).catch(() => markLoaded(p.src));
-        });
-      })
-      .catch(() => {});
-  }, []);
-
-  /* ---------- memories ---------- */
-  const portrait = typeof window !== 'undefined' && window.innerWidth / window.innerHeight < 0.9;
-  const mem = useMemo(() => {
-    if (!fire.memories_at || !photos.length) return [];
-    const t = (now - fire.memories_at) / 1000;
-    if (t < 0) return [];
-    const last = Math.floor(t / INTERVAL);
-    const first = Math.max(0, Math.floor((t - LIFE) / INTERVAL) + 1);
-    const out = [];
-    for (let k = first; k <= last; k++) {
-      const p = photos[k % photos.length];
-      out.push({ k, p, age: t - k * INTERVAL });
-    }
-    // warm up the next few images so they appear instantly
-    for (let k = Math.max(0, last - 2); k <= last + 4; k++) {
-      const src = photos[k % photos.length]?.src;
-      if (src && !preloaded.current.has(src)) {
-        preloaded.current.add(src);
-        const img = new Image();
-        img.decoding = 'async';
-        img.src = src;
-        img.decode().then(() => markLoaded(src)).catch(() => markLoaded(src));
-      }
-    }
-    return out;
-  }, [fire.memories_at, photos, Math.floor(now / 250)]); // eslint-disable-line react-hooks/exhaustive-deps
-
   /* ---------- three cheers ---------- */
   const c = fire.cheer_at ? (now - fire.cheer_at) / 1000 : null;
   const cheerOn = c !== null && c > -1.2 && c < 10.6;
@@ -107,13 +50,8 @@ export default function Moments({ now }) {
 
   return (
     <>
-      <div className="memories" aria-hidden="true">
-        {mem
-          .filter(({ k }) => !(portrait && k % 3 === 2)) // phones: two at a time
-          .map(({ k, p, age }) => (
-            <MemoryPhoto key={k} k={k} src={p.src} caption={p.caption} age={age} ready={loaded.has(p.src)} portrait={portrait} />
-          ))}
-      </div>
+      {/* the photos themselves are drawn in the sky by MemorySky; this tells the page they're on */}
+      {fire.memories_at ? <div className="memories-live" hidden /> : null}
 
       {cheerOn && (
         <div className="cheer">
@@ -131,55 +69,6 @@ export default function Moments({ now }) {
     </>
   );
 }
-
-// Each photo fixes its timing once, when it first appears. Its style never
-// changes after that, so the browser runs the float animation smoothly on the
-// GPU instead of restarting it on every update (which caused the little jumps).
-// Photos rotate through fixed "safe" spots that never cover the fire, the title,
-// the counters or the feed, and the photos on screen at the same time never share a spot.
-const DESKTOP_SLOTS = [
-  { x: 6, y: 16 }, // left, high (below the title)
-  { x: 74, y: 52 }, // right, lower
-  { x: 7, y: 50 }, // left, lower
-  { x: 73, y: 18 }, // right, high (below the counter)
-];
-const PHONE_SLOTS = [
-  { x: 5, y: 18 }, // left, below the title and the "laid a log" line
-  { x: 53, y: 19 }, // right, a touch lower, clear of the zoom buttons
-];
-
-const MemoryPhoto = memo(
-  function MemoryPhoto({ k, src, caption, age, ready, portrait }) {
-    const [start] = useState(() => age);
-    const slots = portrait ? PHONE_SLOTS : DESKTOP_SLOTS;
-    const slot = portrait ? slots[(k % 3) % 2] : slots[k % slots.length];
-    const left = slot.x < 50;
-    const r = (hash(k) - 0.5) * 6;
-    const x = slot.x + (hash(k + 3) - 0.5) * (portrait ? 1.5 : 4);
-    const y = slot.y + (hash(k + 7) - 0.5) * 2;
-    return (
-      <figure
-        className={`memory ${left ? 'l' : 'r'} ${ready ? '' : 'pending'}`}
-        style={{
-          left: `${x}vw`,
-          top: `${y}vh`,
-          '--r': `${r}deg`,
-          animationDuration: `${LIFE}s`,
-          animationDelay: `${-start}s`,
-          animationPlayState: ready ? 'running' : 'paused',
-        }}
-      >
-        <div className="memory-frame">
-          <div className="memory-mat">
-            <img src={src} alt="" decoding="sync" />
-            {caption ? <figcaption>{caption}</figcaption> : null}
-          </div>
-        </div>
-      </figure>
-    );
-  },
-  (a, b) => a.k === b.k && a.ready === b.ready && a.src === b.src && a.portrait === b.portrait,
-);
 
 // Sing-along: notes rising from the fire, a warm glow and a banner that pulse
 // on a shared beat, and tap-anywhere to clap along. Everything is pure CSS

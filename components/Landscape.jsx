@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { fbm, ridged } from '@/lib/noise';
 import { noiseTexture } from './Fire';
 import { getN3 } from '@/lib/noise3d';
+import { shared } from '@/lib/bus';
 
 export const MOON_DIR = new THREE.Vector3(-0.1, 0.2, -0.97).normalize();
 const HAZE = new THREE.Color('#0d1424');
@@ -77,6 +78,11 @@ export function Moon() {
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   }, []);
+  // the moon's glow fades while memory photos fill the sky
+  const haloMat = useRef();
+  useFrame(() => {
+    if (haloMat.current) haloMat.current.opacity = 1 - (shared.memK || 0);
+  });
   return (
     <group position={pos}>
       <mesh rotation={[0, Math.PI * 0.8, 0.3]} renderOrder={-15}>
@@ -84,7 +90,7 @@ export function Moon() {
         <meshBasicMaterial map={tex} color={[2.4, 2.35, 2.2]} fog={false} toneMapped={false} />
       </mesh>
       <sprite scale={[D * 0.22, D * 0.22, 1]} renderOrder={-16}>
-        <spriteMaterial map={halo} transparent depthWrite={false} fog={false} blending={THREE.AdditiveBlending} />
+        <spriteMaterial ref={haloMat} map={halo} transparent depthWrite={false} fog={false} blending={THREE.AdditiveBlending} />
       </sprite>
     </group>
   );

@@ -62,7 +62,7 @@ If you set up Supabase before this version, run `supabase/schema.sql` again. It'
 
 ## After the lighting: memories, cheers and songs
 All controls are in `/admin` once the fire is lit, under **After the lighting**.
-- **Memory photos:** framed photos float up on either side of the fire, one every ~3.6 s, about 3 on screen at once. Everyone sees the same photo at the same moment, and the photos loop.
+- **Memory photos:** the view pulls back so the fire sits small at the bottom, and large framed photos glide past in the sky behind it, one every 7 s. Everyone sees the same photo at the same moment, and the photos loop. **Pause photos** freezes every screen on the current photo; **Resume photos** carries on from there. (If you set up Supabase before pause existed, run `supabase/schema.sql` again in Supabase **before deploying**, or starting/stopping/pausing photos and Reset will fail.)
   To use your real photos, run `npm run memories -- "C:\path\to\photos"`. This shrinks them to small web images (~50 KB each, so 500 photos ≈ 25 MB) in `public/memories/` and replaces the samples. For captions, add a `captions.csv` to the photo folder with lines like `IMG_0012.jpg,Jamboree · 1995`. Then commit and push.
 - **Three cheers:** type who the cheer is for, then press the button. Everyone sees "Hip hip… HOORAY!" three times; each hooray flares the fire with a burst of sparks and a crowd roar. Guests can tap anywhere to throw extra sparks and clap.
 - **Sing-along:** type the song name and press **Start sing-along**. A song banner appears and fireflies drift around the clearing until you press **End sing-along**. (Do the actual singing on Meet.)

@@ -16,9 +16,17 @@ function optimistic(action, extra, T) {
     case 'embers':
       return { mode: extra.mode };
     case 'memories_start':
-      return { memories_at: T + 1500 };
+      return { memories_at: T + 1500, memories_paused_at: null };
     case 'memories_stop':
-      return { memories_at: null };
+      return { memories_at: null, memories_paused_at: null };
+    case 'memories_pause': {
+      const f = useStore.getState().fire;
+      return f.memories_at && !f.memories_paused_at ? { memories_paused_at: T } : null;
+    }
+    case 'memories_resume': {
+      const f = useStore.getState().fire;
+      return f.memories_at && f.memories_paused_at ? { memories_at: f.memories_at + (T - f.memories_paused_at), memories_paused_at: null } : null;
+    }
     case 'cheer':
       return { cheer_at: T + 1200, cheer_text: extra.text || '' };
     case 'song_start':
@@ -213,7 +221,7 @@ export default function AdminPanel() {
             </div>
             <div className="chip">{online} online</div>
             <div className="chip">{logs.length} logs</div>
-            {fire.memories_at ? <div className="chip on">Photos playing</div> : null}
+            {fire.memories_at ? <div className={`chip ${fire.memories_paused_at ? 'warn' : 'on'}`}>{fire.memories_paused_at ? 'Photos paused' : 'Photos playing'}</div> : null}
             {fire.song_at ? <div className="chip on">Sing-along</div> : null}
           </div>
 
@@ -285,15 +293,26 @@ export default function AdminPanel() {
 
                 <div className="card2">
                   <div className="card2-title">Memory photos</div>
-                  <p className="hint2">Framed photos float up beside the fire on every screen.</p>
+                  <p className="hint2">The view pulls back and the photos glide past in the sky behind the fire, on every screen.</p>
                   {!fire.memories_at ? (
                     <Btn busy={!!pending['mem']} className="primary-soft" onClick={() => run('memories_start', {}, 'mem', 'Photos started')}>
                       Start photos
                     </Btn>
                   ) : (
-                    <Btn busy={!!pending['mem']} onClick={() => run('memories_stop', {}, 'mem', 'Photos stopped')}>
-                      Stop photos
-                    </Btn>
+                    <div className="admin-grid two">
+                      {fire.memories_paused_at ? (
+                        <Btn busy={!!pending['mempause']} className="primary-soft" onClick={() => run('memories_resume', {}, 'mempause', 'Photos playing')}>
+                          Resume photos
+                        </Btn>
+                      ) : (
+                        <Btn busy={!!pending['mempause']} onClick={() => run('memories_pause', {}, 'mempause', 'Photos paused')}>
+                          Pause photos
+                        </Btn>
+                      )}
+                      <Btn busy={!!pending['mem']} onClick={() => run('memories_stop', {}, 'mem', 'Photos stopped')}>
+                        Stop photos
+                      </Btn>
+                    </div>
                   )}
                 </div>
 

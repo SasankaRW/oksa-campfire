@@ -78,11 +78,26 @@ export async function POST(req) {
       patch = { stoke_at: iso(now) };
       break;
     case 'memories_start':
-      patch = { memories_at: iso(now + 1500) };
+      patch = { memories_at: iso(now + 1500), memories_paused_at: null };
       break;
     case 'memories_stop':
-      patch = { memories_at: null };
+      patch = { memories_at: null, memories_paused_at: null };
       break;
+    case 'memories_pause':
+    case 'memories_resume': {
+      const { data: cur } = await db.from('fire_state').select('*').eq('id', 1).single();
+      if (!cur?.memories_at) return Response.json({ error: 'Photos are not playing.' }, { status: 400 });
+      const paused = cur.memories_paused_at ? Date.parse(cur.memories_paused_at) : null;
+      if (body.action === 'memories_pause') {
+        if (paused) return Response.json({ ok: true, fire: cur }); // already paused: keep the first pause time
+        patch = { memories_paused_at: iso(now) };
+      } else {
+        if (!paused) return Response.json({ ok: true, fire: cur });
+        // shift the start forward by the time spent paused, so it carries on from the same photo
+        patch = { memories_at: iso(Date.parse(cur.memories_at) + (now - paused)), memories_paused_at: null };
+      }
+      break;
+    }
     case 'cheer':
       patch = { cheer_at: iso(now + 1200), cheer_text: clean(body.text || '', 80) };
       break;
@@ -103,7 +118,7 @@ export async function POST(req) {
         db.from('logs').delete().neq('device_id', ''),
         db.from('leaders').update({ called_at: null, laid_at: null }).gte('slot', 0),
       ]);
-      patch = { ignite_at: null, stoke_at: null, memories_at: null, cheer_at: null, song_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: rev };
+      patch = { ignite_at: null, stoke_at: null, memories_at: null, memories_paused_at: null, cheer_at: null, song_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: rev };
       break;
     case 'seed': {
       const n = Math.max(1, Math.min(200, Number(body.count || 20)));
@@ -121,11 +136,15 @@ export async function POST(req) {
     default:
       return Response.json({ error: 'Unknown action' }, { status: 400 });
   }
-  const { data } = await db
+  const { data, error } = await db
     .from('fire_state')
     .update({ ...patch, updated_at: iso(now) })
     .eq('id', 1)
     .select()
     .single();
+  if (error) {
+    const hint = /memories_paused_at/.test(error.message || '') ? ' Run supabase/schema.sql again in Supabase.' : '';
+    return Response.json({ error: 'Could not update the fire.' + hint }, { status: 500 });
+  }
   return Response.json({ ok: true, fire: data });
 }
