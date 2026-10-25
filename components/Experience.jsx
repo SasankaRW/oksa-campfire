@@ -5,7 +5,7 @@ import { useStore, loadProfile, saveProfile } from '@/lib/store';
 import { startRealtime, addLog, leaderInfo, leaderLay } from '@/lib/realtime';
 import { initAudio, muteAudio } from '@/lib/audio';
 import { emit, shared, setZoom } from '@/lib/bus';
-import { EVENT, MAX_NAME, MAX_MESSAGE } from '@/lib/config';
+import { EVENT, MAX_NAME, MAX_MESSAGE, formatCountdown } from '@/lib/config';
 import { hash } from '@/lib/layout';
 import AdminPanel from './AdminPanel';
 import Moments from './Moments';
@@ -88,7 +88,17 @@ export default function Experience({ mode = 'guest' }) {
   const igniteIn = fire.ignite_at ? (fire.ignite_at - now) / 1000 : null;
   const lit = igniteIn !== null && igniteIn <= 0;
   const counting = igniteIn !== null && igniteIn > 0 && igniteIn <= 60;
-  const status = lit ? (fire.mode === 'embers' ? EVENT.embers : EVENT.lit) : counting ? 'The fire arrow is drawn…' : EVENT.waiting;
+  // long custom timers: show the time left in the status line; the big number takes over for the last minute
+  const scheduled = igniteIn !== null && igniteIn > 60;
+  const status = lit
+    ? fire.mode === 'embers'
+      ? EVENT.embers
+      : EVENT.lit
+    : counting
+      ? 'The fire arrow is drawn…'
+      : scheduled
+        ? `The fire will be lit in ${formatCountdown(igniteIn)}. Lay your log.`
+        : EVENT.waiting;
   const isLeader = !!leaderToken && leaderMe && !leaderMe.error;
   const handActive = mode === 'guest' && !leaderToken && ready && !!profile && !mine;
 

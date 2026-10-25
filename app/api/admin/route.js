@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/supabaseAdmin';
 import { DEMO_NAMES } from '@/lib/demoNames';
 import { randomBytes } from 'crypto';
 import { clean } from '@/lib/profanity';
+import { COUNTDOWN_SECONDS, MAX_COUNTDOWN_SECONDS } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 // Run next to the Supabase database (Singapore) so each query is a few ms, not a trip across the Pacific.
@@ -67,7 +68,8 @@ export async function POST(req) {
       return Response.json({ ok: true, leaders: await listLeaders() });
     }
     case 'ignite': {
-      const delay = Math.max(0, Math.min(60, Number(body.delay ?? 10)));
+      const n = Number(body.delay ?? COUNTDOWN_SECONDS);
+      const delay = Number.isFinite(n) ? Math.max(0, Math.min(MAX_COUNTDOWN_SECONDS, n)) : COUNTDOWN_SECONDS;
       patch = { ignite_at: iso(now + delay * 1000), mode: 'normal' };
       break;
     }
