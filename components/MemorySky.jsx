@@ -45,29 +45,21 @@ function fetchPhoto(p) {
   return e;
 }
 
-// No frame: the photo's edges fade softly into the night sky, over a big
-// blurred glow of the same photo, like light spilling out of it.
+// Minimal: the photo with rounded corners and one very thin light border.
 const canvas = (w, h) => {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   return c;
 };
-// Fade a layer's alpha to nothing over `f` px at every edge.
-function feather(g, w, h, f) {
-  g.globalCompositeOperation = 'destination-in';
-  for (const [len, grad] of [
-    [w, g.createLinearGradient(0, 0, w, 0)],
-    [h, g.createLinearGradient(0, 0, 0, h)],
-  ]) {
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(f / len, 'rgba(0,0,0,1)');
-    grad.addColorStop(1 - f / len, 'rgba(0,0,0,1)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, w, h);
-  }
-  g.globalCompositeOperation = 'source-over';
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
 }
 async function compose({ src, caption }) {
   const img = new Image();
@@ -80,7 +72,8 @@ async function compose({ src, caption }) {
     } catch {}
   }
   const W = 1024;
-  const P = 150; // room around the photo for the glow
+  const P = 4; // a few clear pixels so the border edge stays smooth
+  const R = 28; // corner radius
   const a = clamp(img.naturalWidth / img.naturalHeight, 0.8, 1.7);
   const pw = W - 2 * P;
   const ph = Math.round(pw / a);
@@ -96,36 +89,30 @@ async function compose({ src, caption }) {
   const c = canvas(W, H);
   const g = c.getContext('2d');
 
-  // glow: the photo shrunk to a few pixels and stretched back up (a cheap blur
-  // that works in every browser), spread past the edges and faded out
-  const tiny = canvas(24, Math.max(8, Math.round(24 / a)));
-  tiny.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, tiny.width, tiny.height);
-  const glow = canvas(W, H);
-  const gg = glow.getContext('2d');
-  gg.imageSmoothingQuality = 'high';
-  gg.drawImage(tiny, P * 0.35, P * 0.35, W - P * 0.7, H - P * 0.7);
-  feather(gg, W, H, P * 0.95);
-  g.globalAlpha = 0.6;
-  g.drawImage(glow, 0, 0);
-  g.globalAlpha = 1;
-
-  // the photo, sharp in the middle, melting into the glow at its edges
-  const pc = canvas(pw, ph);
-  const pg = pc.getContext('2d');
-  pg.drawImage(img, sx, sy, sw, sh, 0, 0, pw, ph);
+  // the photo, clipped to the rounded corners
+  g.save();
+  roundRect(g, P, P, pw, ph, R);
+  g.clip();
+  g.drawImage(img, sx, sy, sw, sh, P, P, pw, ph);
   if (caption) {
-    const fade = pg.createLinearGradient(0, ph, 0, ph - 170);
+    // a dark fade at the bottom so the caption reads on any photo
+    const fade = g.createLinearGradient(0, P + ph, 0, P + ph - 170);
     fade.addColorStop(0, 'rgba(0,0,0,0.55)');
     fade.addColorStop(1, 'rgba(0,0,0,0)');
-    pg.fillStyle = fade;
-    pg.fillRect(0, ph - 170, pw, 170);
-    pg.fillStyle = 'rgba(255,245,230,0.95)';
-    pg.font = 'italic 40px "Cormorant Garamond", Georgia, serif';
-    pg.textAlign = 'center';
-    pg.fillText(caption, pw / 2, ph - 70, pw - 160);
+    g.fillStyle = fade;
+    g.fillRect(P, P + ph - 170, pw, 170);
+    g.fillStyle = 'rgba(255,245,230,0.95)';
+    g.font = 'italic 40px "Cormorant Garamond", Georgia, serif';
+    g.textAlign = 'center';
+    g.fillText(caption, W / 2, P + ph - 50, pw - 120);
   }
-  feather(pg, pw, ph, Math.round(Math.min(pw, ph) * 0.12));
-  g.drawImage(pc, P, P);
+  g.restore();
+
+  // very thin light border
+  roundRect(g, P + 1, P + 1, pw - 2, ph - 2, R - 1);
+  g.strokeStyle = 'rgba(255,244,230,0.7)';
+  g.lineWidth = 2;
+  g.stroke();
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -229,7 +216,7 @@ export default function MemorySky() {
       const alpha = s.k * vis * u.r;
       m.visible = alpha > 0.003;
       if (!m.visible) continue;
-      // fit the photo itself in the box; the glow spills out around it
+      // fit the photo itself in the box
       const w0 = Math.min(boxW, boxH * e.photo) / e.inner;
       const sc = 1 - 0.24 * d;
       const w = w0 * sc;
