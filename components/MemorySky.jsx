@@ -1,5 +1,5 @@
 'use client';
-// Memory photos as a big framed slideshow up in the night sky, behind the fire.
+// Memory photos as a big frameless slideshow up in the night sky, behind the fire.
 // Sits in front of the mountains but behind the clearing, so the ground, rocks,
 // flames and sparks all stay in front of it. Moves every frame from the shared
 // slideshow clock, so it glides smoothly and pauses on the same photo everywhere.
@@ -13,13 +13,10 @@ import { memoriesTime, slidePosition, loadManifest } from '@/lib/memories';
 const POOL = 4; // photos drawn at once: previous, current, next, and the one after
 const DIST = 40; // how far in front of the camera the slideshow sits
 const KEEP = 10; // photo textures kept in memory
+const PHOTO_DEPTH = 62; // metres: the depth the photos are tested at (see below)
 
 const mod = (i, n) => ((i % n) + n) % n;
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-function hash(n) {
-  const s = Math.sin(n * 91.7 + 12.3) * 43758.5453;
-  return s - Math.floor(s);
-}
 
 /* ---- each photo becomes one texture: wooden frame, cream mat, photo, caption ---- */
 const cache = new Map(); // src -> { ready, tex, aspect, used }
@@ -29,7 +26,7 @@ function fetchPhoto(p) {
     e.used = performance.now();
     return e;
   }
-  e = { ready: false, failed: false, tex: null, aspect: 1.2, used: performance.now() };
+  e = { ready: false, failed: false, tex: null, aspect: 1.2, inner: 1, photo: 1.2, used: performance.now() };
   cache.set(p.src, e);
   compose(p)
     .then((r) => {
@@ -48,139 +45,93 @@ function fetchPhoto(p) {
   return e;
 }
 
-// Styled to match the page: charred wood with a thin gold inlay (the page's
-// --gold), a parchment mat lit warm from below, a soft ember glow around the
-// frame, and the photo graded warm with darker edges, as if seen by firelight.
-const GOLD = '#c9a66b';
+// No frame: the photo's edges fade softly into the night sky, over a big
+// blurred glow of the same photo, like light spilling out of it.
+const canvas = (w, h) => {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+};
+// Fade a layer's alpha to nothing over `f` px at every edge.
+function feather(g, w, h, f) {
+  g.globalCompositeOperation = 'destination-in';
+  for (const [len, grad] of [
+    [w, g.createLinearGradient(0, 0, w, 0)],
+    [h, g.createLinearGradient(0, 0, 0, h)],
+  ]) {
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(f / len, 'rgba(0,0,0,1)');
+    grad.addColorStop(1 - f / len, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  }
+  g.globalCompositeOperation = 'source-over';
+}
 async function compose({ src, caption }) {
   const img = new Image();
   img.decoding = 'async';
   img.src = src;
   await img.decode();
-  try {
-    await document.fonts?.load('italic 44px "Cormorant Garamond"');
-  } catch {}
+  if (caption) {
+    try {
+      await document.fonts?.load('italic 40px "Cormorant Garamond"');
+    } catch {}
+  }
   const W = 1024;
-  const P = 36; // clear space around the frame for the ember glow
-  const B = 26; // wood
-  const M = 18; // mat
+  const P = 150; // room around the photo for the glow
   const a = clamp(img.naturalWidth / img.naturalHeight, 0.8, 1.7);
-  const fw = W - 2 * P; // frame width
-  const pw = fw - 2 * (B + M);
+  const pw = W - 2 * P;
   const ph = Math.round(pw / a);
-  const cap = caption ? 70 : 0;
-  const fh = ph + 2 * (B + M) + cap;
-  const H = fh + 2 * P;
-  const c = document.createElement('canvas');
-  c.width = W;
-  c.height = H;
-  const g = c.getContext('2d');
-  const fx = P;
-  const fy = P;
-
-  // ember glow behind the frame
-  g.save();
-  g.shadowColor = 'rgba(255,122,42,0.42)';
-  g.shadowBlur = 30;
-  g.shadowOffsetY = 6;
-  g.fillStyle = '#140c06';
-  g.fillRect(fx, fy, fw, fh);
-  g.restore();
-
-  // charred wood, a little lighter at the bottom where the fire catches it
-  const wood = g.createLinearGradient(0, fy, 0, fy + fh);
-  wood.addColorStop(0, '#1a100a');
-  wood.addColorStop(0.55, '#24160c');
-  wood.addColorStop(1, '#3a2312');
-  g.fillStyle = wood;
-  g.fillRect(fx, fy, fw, fh);
-  // fine grain
-  g.globalAlpha = 0.18;
-  for (let i = 0; i < 70; i++) {
-    const y = fy + hash(i + 400) * fh;
-    g.fillStyle = hash(i + 500) > 0.5 ? '#000' : '#5a3a1e';
-    g.fillRect(fx, y, fw, 1 + hash(i + 600) * 1.5);
-  }
-  g.globalAlpha = 1;
-  // gold inlay, and a faint warm edge
-  g.strokeStyle = 'rgba(255,190,120,0.25)';
-  g.lineWidth = 2;
-  g.strokeRect(fx + 1, fy + 1, fw - 2, fh - 2);
-  g.strokeStyle = GOLD;
-  g.lineWidth = 2.5;
-  g.strokeRect(fx + B * 0.45, fy + B * 0.45, fw - B * 0.9, fh - B * 0.9);
-  // small gold corner studs
-  g.fillStyle = GOLD;
-  for (const [cx, cy] of [
-    [fx + B * 0.45, fy + B * 0.45],
-    [fx + fw - B * 0.45, fy + B * 0.45],
-    [fx + B * 0.45, fy + fh - B * 0.45],
-    [fx + fw - B * 0.45, fy + fh - B * 0.45],
-  ]) {
-    g.beginPath();
-    g.arc(cx, cy, 5, 0, Math.PI * 2);
-    g.fill();
-  }
-
-  // parchment mat, lit warm from below
-  const mx = fx + B;
-  const my = fy + B;
-  const mw = fw - 2 * B;
-  const mh = fh - 2 * B;
-  const mat = g.createLinearGradient(0, my, 0, my + mh);
-  mat.addColorStop(0, '#cbb48a');
-  mat.addColorStop(1, '#ead2a0');
-  g.fillStyle = mat;
-  g.fillRect(mx, my, mw, mh);
-  g.strokeStyle = 'rgba(0,0,0,0.45)';
-  g.lineWidth = 3;
-  g.strokeRect(mx + 1.5, my + 1.5, mw - 3, mh - 3);
-
-  // photo, cropped to fit
-  const px = mx + M;
-  const py = my + M;
+  const H = ph + 2 * P;
   const ia = img.naturalWidth / img.naturalHeight;
   let sw = img.naturalWidth;
   let sh = img.naturalHeight;
   if (ia > a) sw = sh * a;
   else sh = sw / a;
-  g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, px, py, pw, ph);
-  // firelight grade: warm tint, a glow from below, darker edges
-  g.save();
-  g.beginPath();
-  g.rect(px, py, pw, ph);
-  g.clip();
-  g.globalCompositeOperation = 'soft-light';
-  g.fillStyle = 'rgba(255,150,70,0.35)';
-  g.fillRect(px, py, pw, ph);
-  g.globalCompositeOperation = 'screen';
-  const low = g.createLinearGradient(0, py + ph, 0, py + ph * 0.5);
-  low.addColorStop(0, 'rgba(255,122,42,0.16)');
-  low.addColorStop(1, 'rgba(255,122,42,0)');
-  g.fillStyle = low;
-  g.fillRect(px, py, pw, ph);
-  g.globalCompositeOperation = 'multiply';
-  const vig = g.createRadialGradient(px + pw / 2, py + ph * 0.55, Math.min(pw, ph) * 0.35, px + pw / 2, py + ph / 2, Math.hypot(pw, ph) * 0.6);
-  vig.addColorStop(0, 'rgba(255,255,255,1)');
-  vig.addColorStop(1, 'rgba(70,40,18,1)');
-  g.fillStyle = vig;
-  g.fillRect(px, py, pw, ph);
-  g.restore();
-  g.strokeStyle = GOLD;
-  g.lineWidth = 2;
-  g.strokeRect(px - 1, py - 1, pw + 2, ph + 2);
+  const sx = (img.naturalWidth - sw) / 2;
+  const sy = (img.naturalHeight - sh) / 2;
 
+  const c = canvas(W, H);
+  const g = c.getContext('2d');
+
+  // glow: the photo shrunk to a few pixels and stretched back up (a cheap blur
+  // that works in every browser), spread past the edges and faded out
+  const tiny = canvas(24, Math.max(8, Math.round(24 / a)));
+  tiny.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, tiny.width, tiny.height);
+  const glow = canvas(W, H);
+  const gg = glow.getContext('2d');
+  gg.imageSmoothingQuality = 'high';
+  gg.drawImage(tiny, P * 0.35, P * 0.35, W - P * 0.7, H - P * 0.7);
+  feather(gg, W, H, P * 0.95);
+  g.globalAlpha = 0.6;
+  g.drawImage(glow, 0, 0);
+  g.globalAlpha = 1;
+
+  // the photo, sharp in the middle, melting into the glow at its edges
+  const pc = canvas(pw, ph);
+  const pg = pc.getContext('2d');
+  pg.drawImage(img, sx, sy, sw, sh, 0, 0, pw, ph);
   if (caption) {
-    g.fillStyle = '#4a2f16';
-    g.font = 'italic 44px "Cormorant Garamond", Georgia, serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(caption, W / 2, py + ph + cap / 2 + 2, pw);
+    const fade = pg.createLinearGradient(0, ph, 0, ph - 170);
+    fade.addColorStop(0, 'rgba(0,0,0,0.55)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
+    pg.fillStyle = fade;
+    pg.fillRect(0, ph - 170, pw, 170);
+    pg.fillStyle = 'rgba(255,245,230,0.95)';
+    pg.font = 'italic 40px "Cormorant Garamond", Georgia, serif';
+    pg.textAlign = 'center';
+    pg.fillText(caption, pw / 2, ph - 70, pw - 160);
   }
+  feather(pg, pw, ph, Math.round(Math.min(pw, ph) * 0.12));
+  g.drawImage(pc, P, P);
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
-  return { tex, aspect: W / H };
+  // inner: the share of the texture's width the photo itself takes up
+  return { tex, aspect: W / H, inner: pw / W, photo: pw / ph };
 }
 
 export default function MemorySky() {
@@ -197,13 +148,15 @@ export default function MemorySky() {
           depthWrite: false,
           opacity: 0,
         });
-        // tested at the depth of something ~300 m away and drawn after the far
-        // landscape: so it covers the moon, mountains, cloud sea and village lights,
-        // while the clearing, rocks and trees (nearer) and the fire (drawn later) stay in front
+        // depth-tested as if PHOTO_DEPTH m away and drawn after the far landscape:
+        // past the clearing (ground ends ~55 m) but before the nearest mountains
+        // (70 m), so it covers the moon, mountains, cloud sea and village lights,
+        // while the ground, rocks, trees and fire stay in front
         mat.onBeforeCompile = (sh) => {
           sh.vertexShader = sh.vertexShader.replace(
             '#include <project_vertex>',
-            '#include <project_vertex>\n  gl_Position.z = gl_Position.w * 0.999;',
+            `#include <project_vertex>
+  gl_Position.z = (projectionMatrix[2][2] * -${PHOTO_DEPTH.toFixed(1)} + projectionMatrix[3][2]) / ${PHOTO_DEPTH.toFixed(1)} * gl_Position.w;`,
           );
         };
         const m = new THREE.Mesh(geo, mat);
@@ -276,7 +229,8 @@ export default function MemorySky() {
       const alpha = s.k * vis * u.r;
       m.visible = alpha > 0.003;
       if (!m.visible) continue;
-      const w0 = Math.min(boxW, boxH * e.aspect);
+      // fit the photo itself in the box; the glow spills out around it
+      const w0 = Math.min(boxW, boxH * e.photo) / e.inner;
       const sc = 1 - 0.24 * d;
       const w = w0 * sc;
       const h = (w0 / e.aspect) * sc;
@@ -285,13 +239,10 @@ export default function MemorySky() {
       v.set(x, y, -DIST).applyQuaternion(cam.quaternion).add(cam.position);
       m.position.copy(v);
       m.quaternion.copy(cam.quaternion);
-      m.rotateZ((hash(i) - 0.5) * 0.035 * (0.4 + d));
       m.scale.set(w, h, 1);
-      // warm firelight on the photos, flickering a little with the fire; kept
-      // below full brightness so the bloom does not flare; neighbours darker still
-      const fl = 0.95 + 0.05 * Math.sin(state.clock.elapsedTime * 7.3) * Math.sin(state.clock.elapsedTime * 3.1 + 1);
-      const b = 0.9 * fl * (0.86 + 0.1 * Math.min(1, shared.intensity || 0)) * (1 - 0.55 * d);
-      m.material.color.setRGB(b, b * 0.95, b * 0.88);
+      // kept a little below full brightness so the bloom does not flare; neighbours dimmer
+      const b = 0.88 * (1 - 0.55 * d);
+      m.material.color.setRGB(b, b * 0.97, b * 0.93);
       m.material.opacity = alpha;
       m.renderOrder = d < 0.5 ? -6 : -7; // after the village lights (-8); centre photo on top
     }
