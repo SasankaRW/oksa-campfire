@@ -1,6 +1,6 @@
 'use client';
 // Memory photos as a big framed slideshow up in the night sky, behind the fire.
-// Drawn right after the sky, at the very back, so the hills, trees,
+// Sits in front of the mountains but behind the clearing, so the ground, rocks,
 // flames and sparks all stay in front of it. Moves every frame from the shared
 // slideshow clock, so it glides smoothly and pauses on the same photo everywhere.
 import { useEffect, useMemo, useRef } from 'react';
@@ -48,6 +48,10 @@ function fetchPhoto(p) {
   return e;
 }
 
+// Styled to match the page: charred wood with a thin gold inlay (the page's
+// --gold), a parchment mat lit warm from below, a soft ember glow around the
+// frame, and the photo graded warm with darker edges, as if seen by firelight.
+const GOLD = '#c9a66b';
 async function compose({ src, caption }) {
   const img = new Image();
   img.decoding = 'async';
@@ -57,48 +61,121 @@ async function compose({ src, caption }) {
     await document.fonts?.load('italic 44px "Cormorant Garamond"');
   } catch {}
   const W = 1024;
-  const B = 24; // wood
-  const M = 20; // mat
+  const P = 36; // clear space around the frame for the ember glow
+  const B = 26; // wood
+  const M = 18; // mat
   const a = clamp(img.naturalWidth / img.naturalHeight, 0.8, 1.7);
-  const pw = W - 2 * (B + M);
+  const fw = W - 2 * P; // frame width
+  const pw = fw - 2 * (B + M);
   const ph = Math.round(pw / a);
-  const cap = caption ? 74 : 0;
-  const H = ph + 2 * (B + M) + cap;
+  const cap = caption ? 70 : 0;
+  const fh = ph + 2 * (B + M) + cap;
+  const H = fh + 2 * P;
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
   const g = c.getContext('2d');
-  // wooden frame
-  const wood = g.createLinearGradient(0, 0, W, H);
-  wood.addColorStop(0, '#4a2f18');
-  wood.addColorStop(0.45, '#24160b');
-  wood.addColorStop(0.7, '#3d2613');
-  wood.addColorStop(1, '#1b1008');
+  const fx = P;
+  const fy = P;
+
+  // ember glow behind the frame
+  g.save();
+  g.shadowColor = 'rgba(255,122,42,0.42)';
+  g.shadowBlur = 30;
+  g.shadowOffsetY = 6;
+  g.fillStyle = '#140c06';
+  g.fillRect(fx, fy, fw, fh);
+  g.restore();
+
+  // charred wood, a little lighter at the bottom where the fire catches it
+  const wood = g.createLinearGradient(0, fy, 0, fy + fh);
+  wood.addColorStop(0, '#1a100a');
+  wood.addColorStop(0.55, '#24160c');
+  wood.addColorStop(1, '#3a2312');
   g.fillStyle = wood;
-  g.fillRect(0, 0, W, H);
-  g.strokeStyle = 'rgba(255,214,150,0.22)';
+  g.fillRect(fx, fy, fw, fh);
+  // fine grain
+  g.globalAlpha = 0.18;
+  for (let i = 0; i < 70; i++) {
+    const y = fy + hash(i + 400) * fh;
+    g.fillStyle = hash(i + 500) > 0.5 ? '#000' : '#5a3a1e';
+    g.fillRect(fx, y, fw, 1 + hash(i + 600) * 1.5);
+  }
+  g.globalAlpha = 1;
+  // gold inlay, and a faint warm edge
+  g.strokeStyle = 'rgba(255,190,120,0.25)';
   g.lineWidth = 2;
-  g.strokeRect(1, 1, W - 2, H - 2);
-  // mat
-  g.fillStyle = '#efe5cf';
-  g.fillRect(B, B, W - 2 * B, H - 2 * B);
-  g.strokeStyle = 'rgba(190,150,80,0.9)';
-  g.strokeRect(B + 1, B + 1, W - 2 * B - 2, H - 2 * B - 2);
+  g.strokeRect(fx + 1, fy + 1, fw - 2, fh - 2);
+  g.strokeStyle = GOLD;
+  g.lineWidth = 2.5;
+  g.strokeRect(fx + B * 0.45, fy + B * 0.45, fw - B * 0.9, fh - B * 0.9);
+  // small gold corner studs
+  g.fillStyle = GOLD;
+  for (const [cx, cy] of [
+    [fx + B * 0.45, fy + B * 0.45],
+    [fx + fw - B * 0.45, fy + B * 0.45],
+    [fx + B * 0.45, fy + fh - B * 0.45],
+    [fx + fw - B * 0.45, fy + fh - B * 0.45],
+  ]) {
+    g.beginPath();
+    g.arc(cx, cy, 5, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // parchment mat, lit warm from below
+  const mx = fx + B;
+  const my = fy + B;
+  const mw = fw - 2 * B;
+  const mh = fh - 2 * B;
+  const mat = g.createLinearGradient(0, my, 0, my + mh);
+  mat.addColorStop(0, '#cbb48a');
+  mat.addColorStop(1, '#ead2a0');
+  g.fillStyle = mat;
+  g.fillRect(mx, my, mw, mh);
+  g.strokeStyle = 'rgba(0,0,0,0.45)';
+  g.lineWidth = 3;
+  g.strokeRect(mx + 1.5, my + 1.5, mw - 3, mh - 3);
+
   // photo, cropped to fit
+  const px = mx + M;
+  const py = my + M;
   const ia = img.naturalWidth / img.naturalHeight;
   let sw = img.naturalWidth;
   let sh = img.naturalHeight;
   if (ia > a) sw = sh * a;
   else sh = sw / a;
-  g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, B + M, B + M, pw, ph);
-  g.strokeStyle = 'rgba(60,40,20,0.5)';
-  g.strokeRect(B + M, B + M, pw, ph);
+  g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, px, py, pw, ph);
+  // firelight grade: warm tint, a glow from below, darker edges
+  g.save();
+  g.beginPath();
+  g.rect(px, py, pw, ph);
+  g.clip();
+  g.globalCompositeOperation = 'soft-light';
+  g.fillStyle = 'rgba(255,150,70,0.35)';
+  g.fillRect(px, py, pw, ph);
+  g.globalCompositeOperation = 'screen';
+  const low = g.createLinearGradient(0, py + ph, 0, py + ph * 0.5);
+  low.addColorStop(0, 'rgba(255,122,42,0.16)');
+  low.addColorStop(1, 'rgba(255,122,42,0)');
+  g.fillStyle = low;
+  g.fillRect(px, py, pw, ph);
+  g.globalCompositeOperation = 'multiply';
+  const vig = g.createRadialGradient(px + pw / 2, py + ph * 0.55, Math.min(pw, ph) * 0.35, px + pw / 2, py + ph / 2, Math.hypot(pw, ph) * 0.6);
+  vig.addColorStop(0, 'rgba(255,255,255,1)');
+  vig.addColorStop(1, 'rgba(70,40,18,1)');
+  g.fillStyle = vig;
+  g.fillRect(px, py, pw, ph);
+  g.restore();
+  g.strokeStyle = GOLD;
+  g.lineWidth = 2;
+  g.strokeRect(px - 1, py - 1, pw + 2, ph + 2);
+
   if (caption) {
-    g.fillStyle = '#4a3520';
+    g.fillStyle = '#4a2f16';
     g.font = 'italic 44px "Cormorant Garamond", Georgia, serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(caption, W / 2, B + M + ph + cap / 2 + 2, pw);
+    g.fillText(caption, W / 2, py + ph + cap / 2 + 2, pw);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -113,31 +190,26 @@ export default function MemorySky() {
   const meshes = useMemo(
     () =>
       Array.from({ length: POOL }, () => {
-        // opaque pass (so it draws right after the sky, before the hills and fire),
-        // but blended so it can fade in and out
         const mat = new THREE.MeshBasicMaterial({
           fog: false,
+          transparent: true,
           depthTest: true,
-          depthFunc: THREE.AlwaysDepth,
-          depthWrite: true,
-          transparent: false,
-          blending: THREE.CustomBlending,
-          blendSrc: THREE.SrcAlphaFactor,
-          blendDst: THREE.OneMinusSrcAlphaFactor,
+          depthWrite: false,
           opacity: 0,
         });
-        // sit at the very back: drawn over the moon, and the sky glow drawn after
-        // it stays behind, while the hills (drawn later, and nearer) and the fire stay in front
+        // tested at the depth of something ~300 m away and drawn after the far
+        // landscape: so it covers the moon, mountains, cloud sea and village lights,
+        // while the clearing, rocks and trees (nearer) and the fire (drawn later) stay in front
         mat.onBeforeCompile = (sh) => {
           sh.vertexShader = sh.vertexShader.replace(
             '#include <project_vertex>',
-            '#include <project_vertex>\n  gl_Position.z = gl_Position.w * 0.99998;',
+            '#include <project_vertex>\n  gl_Position.z = gl_Position.w * 0.999;',
           );
         };
         const m = new THREE.Mesh(geo, mat);
         m.frustumCulled = false;
         m.visible = false;
-        m.renderOrder = -12;
+        m.renderOrder = -6;
         m.userData = { i: null, r: 0 };
         return m;
       }),
@@ -173,10 +245,10 @@ export default function MemorySky() {
     const Hv = 2 * DIST * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
     const Wv = Hv * cam.aspect;
     // the space the main photo fits inside, in the upper part of the screen
-    const boxW = (portrait ? 0.86 : 0.5) * Wv;
-    const boxH = (portrait ? 0.36 : 0.5) * Hv;
-    const cy = (portrait ? 0.16 : 0.16) * Hv;
-    const gap = portrait ? boxW * 0.95 : boxW * 0.88;
+    const boxW = (portrait ? 0.94 : 0.68) * Wv;
+    const boxH = (portrait ? 0.5 : 0.7) * Hv;
+    const cy = (portrait ? 0.1 : 0.07) * Hv;
+    const gap = portrait ? boxW * 0.95 : boxW * 0.9;
     const tt = t ?? 0;
     const o = s.o;
     const base = Math.floor(o) - 1;
@@ -215,11 +287,13 @@ export default function MemorySky() {
       m.quaternion.copy(cam.quaternion);
       m.rotateZ((hash(i) - 0.5) * 0.035 * (0.4 + d));
       m.scale.set(w, h, 1);
-      // dimmed so the bloom does not flare the bright parts; neighbours darker still
-      m.material.color.setScalar(0.86 * (1 - 0.55 * d));
+      // warm firelight on the photos, flickering a little with the fire; kept
+      // below full brightness so the bloom does not flare; neighbours darker still
+      const fl = 0.95 + 0.05 * Math.sin(state.clock.elapsedTime * 7.3) * Math.sin(state.clock.elapsedTime * 3.1 + 1);
+      const b = 0.9 * fl * (0.86 + 0.1 * Math.min(1, shared.intensity || 0)) * (1 - 0.55 * d);
+      m.material.color.setRGB(b, b * 0.95, b * 0.88);
       m.material.opacity = alpha;
-      // after the moon (-15), before the hills (-10); the centre photo on top of its neighbours
-      m.renderOrder = d < 0.5 ? -12 : -13;
+      m.renderOrder = d < 0.5 ? -6 : -7; // after the village lights (-8); centre photo on top
     }
   });
 
