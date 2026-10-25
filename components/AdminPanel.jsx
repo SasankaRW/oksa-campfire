@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { adminAction } from '@/lib/realtime';
-import { COUNTDOWN_SECONDS } from '@/lib/config';
+import { COUNTDOWN_SECONDS, MAX_COUNTDOWN_SECONDS, formatCountdown } from '@/lib/config';
 
 /* What each action changes, applied instantly on this screen while the server confirms. */
 function optimistic(action, extra, T) {
@@ -77,6 +77,9 @@ export default function AdminPanel() {
   const [toast, setToast] = useState(null); // { text, kind }
   const [confirm, setConfirm] = useState(null); // key awaiting a second click
   const [delay, setDelay] = useState(COUNTDOWN_SECONDS);
+  const [custom, setCustom] = useState(false);
+  const [cMin, setCMin] = useState('5');
+  const [cSec, setCSec] = useState('0');
   const [draft, setDraft] = useState(null);
   const [copied, setCopied] = useState(-1);
   const [cheerText, setCheerText] = useState('Three cheers for Kingswood!');
@@ -170,7 +173,16 @@ export default function AdminPanel() {
   const lit = fire.ignite_at && fire.ignite_at <= now;
   const counting = fire.ignite_at && fire.ignite_at > now;
   const countLeft = counting ? Math.ceil((fire.ignite_at - now) / 1000) : 0;
-  const fireLabel = lit ? (fire.mode === 'embers' ? 'Burning low' : 'Lit') : counting ? `Lighting in ${countLeft}s` : 'Not lit';
+  const fireLabel = lit
+    ? fire.mode === 'embers'
+      ? 'Burning low'
+      : 'Lit'
+    : counting
+      ? `Lighting in ${countLeft > 60 ? formatCountdown(countLeft) : `${countLeft}s`}`
+      : 'Not lit';
+  // custom timer: whole minutes + seconds, 1s to MAX_COUNTDOWN_SECONDS
+  const chosenDelay = custom ? (parseInt(cMin, 10) || 0) * 60 + (parseInt(cSec, 10) || 0) : delay;
+  const customBad = chosenDelay < 1 || chosenDelay > MAX_COUNTDOWN_SECONDS;
 
   if (!open)
     return (
@@ -240,21 +252,48 @@ export default function AdminPanel() {
                 {!lit && !counting && (
                   <>
                     <p className="hint2">When everyone has laid their log, shoot the fire arrow. A countdown shows on every screen first.</p>
-                    <div className="seg" role="radiogroup" aria-label="Countdown">
+                    <div className="seg four" role="radiogroup" aria-label="Countdown">
                       {[10, 5, 3].map((s) => (
-                        <button key={s} className={delay === s ? 'on' : ''} onClick={() => setDelay(s)}>
-                          {s}s countdown
+                        <button key={s} role="radio" aria-checked={!custom && delay === s} className={!custom && delay === s ? 'on' : ''}
+                          onClick={() => {
+                            setCustom(false);
+                            setDelay(s);
+                          }}
+                        >
+                          {s}s
                         </button>
                       ))}
+                      <button role="radio" aria-checked={custom} className={custom ? 'on' : ''} onClick={() => setCustom(true)}>
+                        Custom
+                      </button>
                     </div>
-                    <Btn busy={!!pending['ignite']} className="fire big-act" onClick={() => run('ignite', { delay }, 'ignite', 'Fire arrow drawn')}>
-                      Shoot the fire arrow
+                    {custom && (
+                      <div className="custom-timer">
+                        <label>
+                          <input type="number" inputMode="numeric" min="0" max={MAX_COUNTDOWN_SECONDS / 60} value={cMin}
+                            onChange={(e) => setCMin(e.target.value)}
+                          />
+                          <span>min</span>
+                        </label>
+                        <label>
+                          <input type="number" inputMode="numeric" min="0" max="59" value={cSec}
+                            onChange={(e) => setCSec(e.target.value)}
+                          />
+                          <span>sec</span>
+                        </label>
+                      </div>
+                    )}
+                    {custom && customBad && <p className="hint2 warnline">Pick a time up to {MAX_COUNTDOWN_SECONDS / 60} minutes.</p>}
+                    <Btn busy={!!pending['ignite']} className="fire big-act" disabled={custom && customBad}
+                      onClick={() => run('ignite', { delay: chosenDelay }, 'ignite', 'Fire arrow drawn')}
+                    >
+                      {custom && !customBad ? `Shoot the fire arrow in ${formatCountdown(chosenDelay)}` : 'Shoot the fire arrow'}
                     </Btn>
                   </>
                 )}
                 {counting && (
                   <div className="countbox">
-                    <div className="countnum">{countLeft}</div>
+                    <div className="countnum">{countLeft > 60 ? formatCountdown(countLeft) : countLeft}</div>
                     <div>The arrow flies when the countdown ends.</div>
                   </div>
                 )}
@@ -280,7 +319,9 @@ export default function AdminPanel() {
                     className={`danger ${confirm === 'extinguish' ? 'confirming' : ''}`}
                     onClick={() => confirmThen('extinguish', () => run('extinguish', {}, 'extinguish', 'Fire put out'))}
                   >
-                    {confirm === 'extinguish' ? 'Click again to put it out' : 'Put the fire out'}
+                    {counting
+                      ? confirm === 'extinguish' ? 'Click again to cancel' : 'Cancel the countdown'
+                      : confirm === 'extinguish' ? 'Click again to put it out' : 'Put the fire out'}
                   </Btn>
                 )}
               </section>
