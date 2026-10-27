@@ -17,6 +17,14 @@ function ok(pass) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+const isLink = (s) => {
+  try {
+    return new URL(s).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 export async function POST(req) {
   const body = await req.json().catch(() => ({}));
   if (!ok(body.passcode)) return Response.json({ error: 'Wrong passcode.' }, { status: 401 });
@@ -109,6 +117,18 @@ export async function POST(req) {
     case 'song_stop':
       patch = { song_at: null };
       break;
+    case 'quiz': {
+      // save the Kahoot link and show or hide the quiz button for everyone
+      const url = typeof body.url === 'string' ? body.url.trim().slice(0, 500) : null;
+      if (url !== null && url && !isLink(url)) return Response.json({ error: 'Paste a full link that starts with https://' }, { status: 400 });
+      patch = { quiz_on: !!body.on };
+      if (url !== null) patch.quiz_url = url;
+      if (body.on) {
+        const link = url ?? (await db.from('fire_state').select('quiz_url').eq('id', 1).single()).data?.quiz_url;
+        if (!link) return Response.json({ error: 'Add the quiz link first.' }, { status: 400 });
+      }
+      break;
+    }
     case 'embers':
       patch = { mode: body.mode === 'embers' ? 'embers' : 'normal' };
       break;
@@ -120,7 +140,7 @@ export async function POST(req) {
         db.from('logs').delete().neq('device_id', ''),
         db.from('leaders').update({ called_at: null, laid_at: null }).gte('slot', 0),
       ]);
-      patch = { ignite_at: null, stoke_at: null, memories_at: null, memories_paused_at: null, cheer_at: null, song_at: null, mode: 'normal', reset_at: iso(now), leaders_rev: rev };
+      patch = { ignite_at: null, stoke_at: null, memories_at: null, memories_paused_at: null, cheer_at: null, song_at: null, quiz_on: false, mode: 'normal', reset_at: iso(now), leaders_rev: rev };
       break;
     case 'seed': {
       const n = Math.max(1, Math.min(200, Number(body.count || 20)));
@@ -145,7 +165,7 @@ export async function POST(req) {
     .select()
     .single();
   if (error) {
-    const hint = /memories_paused_at/.test(error.message || '') ? ' Run supabase/schema.sql again in Supabase.' : '';
+    const hint = /memories_paused_at|quiz_/.test(error.message || '') ? ' Run supabase/schema.sql again in Supabase.' : '';
     return Response.json({ error: 'Could not update the fire.' + hint }, { status: 500 });
   }
   return Response.json({ ok: true, fire: data });

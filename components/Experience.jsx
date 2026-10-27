@@ -176,9 +176,11 @@ export default function Experience({ mode = 'guest' }) {
     [quality, handActive, stableThrow, mySeed],
   );
   const joinUrl = typeof window !== 'undefined' ? window.location.host : '';
+  // the Kahoot button: only while the fire keeper has it switched on, and only for real https links
+  const quizUrl = fire.quiz_on && mode !== 'stage' && /^https:\/\//i.test(fire.quiz_url || '') ? fire.quiz_url : null;
 
   return (
-    <main className={`stage ${hideUi ? 'ui-hidden' : ''}`}>
+    <main className={`stage ${hideUi ? 'ui-hidden' : ''} ${quizUrl ? 'quiz-on' : ''}`}>
       <SceneGuard>{sceneEl}</SceneGuard>
       <div className={`curtain ${ready ? 'up' : ''}`} />
       <div className={`dim ${counting ? 'on' : ''} ${spot ? 'spot' : ''}`} />
@@ -243,6 +245,15 @@ export default function Experience({ mode = 'guest' }) {
           </div>
         </div>
       </header>
+
+      {quizUrl && (
+        <a className="quiz-btn" href={quizUrl} target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm1.6-6.4-.9.9c-.6.6-.7 1-.7 2h-2v-.5c0-1 .3-1.8 1-2.5l1.2-1.2a1.4 1.4 0 1 0-2.4-1H8.8a3.2 3.2 0 1 1 5.8 2.3z" />
+          </svg>
+          Join the quiz
+        </a>
+      )}
 
       <ul className="feed" aria-live="polite">
         {feed.map((f) => (

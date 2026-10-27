@@ -33,6 +33,8 @@ function optimistic(action, extra, T) {
       return { song_at: T, song_title: extra.title || '' };
     case 'song_stop':
       return { song_at: null };
+    case 'quiz':
+      return { quiz_on: !!extra.on, ...(typeof extra.url === 'string' ? { quiz_url: extra.url.trim() } : {}) };
     default:
       return null;
   }
@@ -85,6 +87,7 @@ export default function AdminPanel() {
   const [cheerText, setCheerText] = useState('Three cheers for Kingswood!');
   const [songTitle, setSongTitle] = useState('');
   const [filter, setFilter] = useState('');
+  const [quizUrl, setQuizUrl] = useState(null); // null until loaded from the fire
   const toastTimer = useRef(null);
   const confirmTimer = useRef(null);
 
@@ -113,6 +116,11 @@ export default function AdminPanel() {
       setDraft([0, 1, 2, 3, 4].map((i) => ({ name: adminLeaders[i]?.name || '', title: adminLeaders[i]?.title || '' })));
     }
   }, [adminLeaders, draft]);
+
+  // fill the quiz link box with the saved link once it arrives
+  useEffect(() => {
+    if (quizUrl === null && fire.quiz_url) setQuizUrl(fire.quiz_url);
+  }, [fire.quiz_url, quizUrl]);
 
   function say(text, kind = 'ok') {
     clearTimeout(toastTimer.current);
@@ -235,6 +243,7 @@ export default function AdminPanel() {
             <div className="chip">{logs.length} logs</div>
             {fire.memories_at ? <div className={`chip ${fire.memories_paused_at ? 'warn' : 'on'}`}>{fire.memories_paused_at ? 'Photos paused' : 'Photos playing'}</div> : null}
             {fire.song_at ? <div className="chip on">Sing-along</div> : null}
+            {fire.quiz_on ? <div className="chip on">Quiz button showing</div> : null}
           </div>
 
           <nav className="admin-tabs" role="tablist">
@@ -363,6 +372,36 @@ export default function AdminPanel() {
                   <Btn busy={!!pending['cheer']} className="primary-soft" onClick={() => run('cheer', { text: cheerText }, 'cheer', 'Cheers started')}>
                     Hip hip, hooray ×3
                   </Btn>
+                </div>
+
+                <div className="card2">
+                  <div className="card2-title">Kahoot quiz</div>
+                  <p className="hint2">Shows a “Join the quiz” button on every guest's screen. It opens the link in a new tab.</p>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    value={quizUrl ?? ''}
+                    onChange={(e) => setQuizUrl(e.target.value)}
+                    placeholder="https://kahoot.it/?pin=…"
+                  />
+                  {!fire.quiz_on ? (
+                    <Btn busy={!!pending['quiz']} className="primary-soft" disabled={!(quizUrl || '').trim()}
+                      onClick={() => run('quiz', { url: quizUrl || '', on: true }, 'quiz', 'Quiz button is showing')}
+                    >
+                      Show quiz button to everyone
+                    </Btn>
+                  ) : (
+                    <div className="admin-grid two">
+                      <Btn busy={!!pending['quizsave']} disabled={!(quizUrl || '').trim() || (quizUrl || '').trim() === fire.quiz_url}
+                        onClick={() => run('quiz', { url: quizUrl || '', on: true }, 'quizsave', 'Quiz link updated')}
+                      >
+                        Update link
+                      </Btn>
+                      <Btn busy={!!pending['quiz']} onClick={() => run('quiz', { on: false }, 'quiz', 'Quiz button hidden')}>
+                        Hide quiz button
+                      </Btn>
+                    </div>
+                  )}
                 </div>
 
                 <div className="card2">

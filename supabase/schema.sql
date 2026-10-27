@@ -40,6 +40,9 @@ alter table public.fire_state add column if not exists song_at timestamptz;
 alter table public.fire_state add column if not exists song_title text not null default '';
 -- memory photos paused by the fire keeper (null = playing)
 alter table public.fire_state add column if not exists memories_paused_at timestamptz;
+-- Kahoot quiz button: the link, and whether everyone can see the button
+alter table public.fire_state add column if not exists quiz_url text not null default '';
+alter table public.fire_state add column if not exists quiz_on boolean not null default false;
 
 -- ---------- the 5 leaders' honour logs (private: links carry a secret token) ----------
 create table if not exists public.leaders (

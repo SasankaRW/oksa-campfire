@@ -22,7 +22,7 @@ button, input, select { font: inherit; color: inherit; }
 .dim { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 60%, transparent 20%, rgba(0,0,0,0.65) 75%); opacity: 0; transition: opacity 2s ease; pointer-events: none; z-index: 2; }
 .dim.on { opacity: 1; }
 
-.ui-hidden .hud-top, .ui-hidden .feed, .ui-hidden .sound, .ui-hidden .mine, .ui-hidden .demo-flag, .ui-hidden .joinat, .ui-hidden .admin, .ui-hidden .admin-toggle { opacity: 0; pointer-events: none; }
+.ui-hidden .hud-top, .ui-hidden .feed, .ui-hidden .sound, .ui-hidden .mine, .ui-hidden .demo-flag, .ui-hidden .joinat, .ui-hidden .admin, .ui-hidden .admin-toggle, .ui-hidden .quiz-btn { opacity: 0; pointer-events: none; }
 
 .eyebrow { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); }
 .hud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 22px 28px; pointer-events: none; z-index: 10; transition: opacity .6s; }
@@ -276,3 +276,16 @@ input::placeholder { color: #5a554d; }
 /* on phones the "X laid a log" lines sit where the photos float, so they step aside while photos play */
 @media (max-width: 700px) { main.stage:has(.memories-live) .feed { opacity: 0; } }
 @media (max-width: 700px) { .song-wrap { bottom: 118px; } .song { padding: 10px 16px; gap: 10px; } .song-notes span { bottom: 40vh; } }
+
+/* ---- Kahoot quiz button (shown while the fire keeper switches it on) ---- */
+.quiz-btn { position: absolute; left: 50%; top: 72px; transform: translateX(-50%); z-index: 13; display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 22px; border-radius: 999px; background: linear-gradient(180deg, #ffc46b, #ff8a2a); color: #1b1007; font-size: 16px; font-weight: 500; text-decoration: none; white-space: nowrap; box-shadow: 0 0 26px rgba(255,140,50,.4), 0 4px 14px rgba(0,0,0,.4); animation: quizIn .7s cubic-bezier(.2,.7,.2,1) both, quizGlow 2.6s ease-in-out .7s infinite; transition: opacity .6s, filter .2s; }
+.quiz-btn:hover { filter: brightness(1.07); }
+.quiz-btn:active { filter: brightness(.95); }
+.quiz-btn:focus-visible { outline: 2px solid #fff3dc; outline-offset: 3px; }
+@keyframes quizIn { from { opacity: 0; transform: translate(-50%, -8px); } }
+@keyframes quizGlow { 50% { box-shadow: 0 0 40px rgba(255,150,60,.65), 0 4px 14px rgba(0,0,0,.4); } }
+@media (prefers-reduced-motion: reduce) { .quiz-btn { animation: none; } }
+@media (max-width: 700px) {
+  .quiz-btn { top: 132px; height: 44px; font-size: 15px; }
+  .quiz-on .feed { top: 190px; }
+}
