@@ -116,13 +116,13 @@ function CameraRig() {
       roll = Math.sin(ph) * 0.018 * sw;
       speed = 6;
     }
-    // one lap about every 50 s while singing (paused for memory photos);
-    // afterwards, glide back to the front the short way round
+    // one lap about every 50 s while singing; for memory photos or when the
+    // song ends, glide back to the front the short way round
     const TAU = Math.PI * 2;
-    if (sw > 0.001) orbit.current += dt * (TAU / 50) * sw * (1 - m);
+    if (sw > 0.001 && !memOn) orbit.current += dt * (TAU / 50) * sw;
     else {
       const home = Math.round(orbit.current / TAU) * TAU;
-      orbit.current += (home - orbit.current) * (1 - Math.exp(-dt * 0.6));
+      orbit.current += (home - orbit.current) * (1 - Math.exp(-dt * (memOn ? 1.5 : 0.6)));
     }
     y -= m * (portrait ? 0.6 : 1.2);
     look.current.set(
@@ -138,6 +138,9 @@ function CameraRig() {
       speed = 7;
       look.current.set(0, 1.25 + Math.min(I, 1.2) * 0.15, -0.6);
     }
+    // away from the front, stay inside the tree-free clearing (trees start ~9 m out)
+    const off = Math.min(1, Math.abs(Math.sin(orbit.current / 2)) / 0.34);
+    dist += (Math.min(dist, 7.5) - dist) * off;
     // turn the whole view around the fire by the orbit angle
     const ca = Math.cos(orbit.current);
     const sa = Math.sin(orbit.current);
