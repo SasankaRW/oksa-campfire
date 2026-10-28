@@ -79,6 +79,7 @@ function CameraRig() {
   const spotS = useRef(0);
   const songS = useRef(0);
   const memS = useRef(0);
+  const orbit = useRef(0); // sing-along: angle the camera has travelled around the fire
   const pointer = useRef(new THREE.Vector2());
   const look = useRef(new THREE.Vector3(0, 1.2, 0));
   useFrame((state, dt) => {
@@ -102,7 +103,7 @@ function CameraRig() {
     // closer = lower and looking at the flames; further = higher, more valley
     let y = 1.2 + 2.1 * z + Math.sin(t * 0.083) * 0.08 + pointer.current.y * 0.2;
     let speed = 4;
-    // sing-along: the view sways gently side to side, like a circle of people swaying
+    // sing-along: the view slowly circles the fire, swaying with the beat
     const sb = songBeat(t);
     songS.current += ((sb ? Math.min(1, sb.t / 3) : 0) - songS.current) * (1 - Math.exp(-dt * 1.2));
     const sw = songS.current;
@@ -115,10 +116,18 @@ function CameraRig() {
       roll = Math.sin(ph) * 0.018 * sw;
       speed = 6;
     }
-    y -= m * 1.2;
+    // one lap about every 50 s while singing (paused for memory photos);
+    // afterwards, glide back to the front the short way round
+    const TAU = Math.PI * 2;
+    if (sw > 0.001) orbit.current += dt * (TAU / 50) * sw * (1 - m);
+    else {
+      const home = Math.round(orbit.current / TAU) * TAU;
+      orbit.current += (home - orbit.current) * (1 - Math.exp(-dt * 0.6));
+    }
+    y -= m * (portrait ? 0.6 : 1.2);
     look.current.set(
       0,
-      1.05 + 0.4 * Math.min(z, 1.2) + Math.min(I, 1.2) * 0.1 + spotS.current * 0.7 + m * (portrait ? 6.5 : 4.8),
+      1.05 + 0.4 * Math.min(z, 1.2) + Math.min(I, 1.2) * 0.1 + spotS.current * 0.7 + m * (portrait ? 3.6 : 4.8),
       -2 * Math.min(1, z),
     );
     if (shared.keepsake) {
@@ -129,7 +138,14 @@ function CameraRig() {
       speed = 7;
       look.current.set(0, 1.25 + Math.min(I, 1.2) * 0.15, -0.6);
     }
-    camera.position.lerp(new THREE.Vector3(x, y, dist), 1 - Math.exp(-dt * speed));
+    // turn the whole view around the fire by the orbit angle
+    const ca = Math.cos(orbit.current);
+    const sa = Math.sin(orbit.current);
+    const lx = look.current.x;
+    const lz = look.current.z;
+    look.current.x = lx * ca + lz * sa;
+    look.current.z = -lx * sa + lz * ca;
+    camera.position.lerp(new THREE.Vector3(x * ca + dist * sa, y, -x * sa + dist * ca), 1 - Math.exp(-dt * speed));
     camera.lookAt(look.current);
     if (roll && !shared.keepsake) camera.rotateZ(roll);
     const fov = portrait ? 60 : 42;
