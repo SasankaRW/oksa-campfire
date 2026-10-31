@@ -11,6 +11,7 @@ import AdminPanel from './AdminPanel';
 import Moments from './Moments';
 import SceneGuard from './SceneGuard';
 import { makeKeepsake } from '@/lib/keepsake';
+import { loadPhoto, savePhoto, clearPhoto } from '@/lib/memoryPhoto';
 
 const Scene = dynamic(() => import('./Scene'), { ssr: false });
 
@@ -52,6 +53,9 @@ export default function Experience({ mode = 'guest' }) {
   const [leaderMe, setLeaderMe] = useState(null); // { slot, name, title } or { error }
   const [leaderBusy, setLeaderBusy] = useState(false);
   const [keepBusy, setKeepBusy] = useState(false);
+  // optional memory photo: stays on this device only, used in the keepsake
+  const [photo, setPhoto] = useState(null);
+  const [photoErr, setPhotoErr] = useState('');
   const leaders = useStore((s) => s.leaders);
   // Re-render quickly only while something is counting down or animating on screen.
   const _t = Date.now() + useStore.getState().offset;
@@ -68,6 +72,7 @@ export default function Experience({ mode = 'guest' }) {
       const t = new URLSearchParams(location.search).get('leader');
       if (t) setLeaderToken(t);
     } catch {}
+    setPhoto(loadPhoto());
     const p = loadProfile();
     if (p) {
       setProfile(p);
@@ -160,6 +165,23 @@ export default function Experience({ mode = 'guest' }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function pickPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoErr('');
+    try {
+      setPhoto(await savePhoto(file));
+    } catch (err) {
+      setPhotoErr(err.message);
+    }
+  }
+
+  function removePhoto() {
+    clearPhoto();
+    setPhoto(null);
   }
 
   function toggleSound() {
@@ -310,6 +332,24 @@ export default function Experience({ mode = 'guest' }) {
               />
             </label>
           </div>
+          <div className="photo-pick">
+            {photo ? (
+              <>
+                <img src={photo} alt="Your memory photo" />
+                <span className="photo-note">Your memory photo will be on your keepsake.</span>
+                <button type="button" className="link-btn" onClick={removePhoto}>
+                  Remove
+                </button>
+              </>
+            ) : (
+              <label className="photo-add">
+                <input type="file" accept="image/*" onChange={pickPhoto} />
+                <span>+ Add a memory photo (optional)</span>
+              </label>
+            )}
+          </div>
+          <div className="fine photo-fine">Your photo stays on this phone. It is only used on your keepsake.</div>
+          {photoErr && <div className="error">{photoErr}</div>}
           {error && <div className="error">{error}</div>}
           <button className="btn primary big pulse" type="submit">
             Take your log
@@ -353,6 +393,7 @@ export default function Experience({ mode = 'guest' }) {
               {mine.batch ? ` · ${mine.batch}` : ''}
             </div>
             <div className="mine-sub">Your log is in the fire — #{logs.indexOf(mine) + 1}</div>
+            {photoErr && <div className="error">{photoErr}</div>}
           </div>
           <div className="mine-actions">
             <button className="btn ghost big-ish" onClick={() => emit('focus-mine')}>
@@ -365,7 +406,7 @@ export default function Experience({ mode = 'guest' }) {
                 onClick={async () => {
                   setKeepBusy(true);
                   try {
-                    await makeKeepsake(mine, logs.indexOf(mine) + 1);
+                    await makeKeepsake(mine, logs.indexOf(mine) + 1, photo);
                   } finally {
                     setKeepBusy(false);
                   }
@@ -375,6 +416,12 @@ export default function Experience({ mode = 'guest' }) {
                 {keepBusy ? 'Framing…' : 'Keepsake'}
               </button>
             )}
+            <label className="btn ghost photo-btn" title="Your photo stays on this phone">
+              <input type="file" accept="image/*" onChange={pickPhoto} />
+              {photo ? <img src={photo} alt="" /> : null}
+              <span className="long">{photo ? 'Change photo' : 'Add photo'}</span>
+              {!photo && <span className="short">Photo</span>}
+            </label>
           </div>
         </div>
       )}
