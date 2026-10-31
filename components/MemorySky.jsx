@@ -1,8 +1,8 @@
 'use client';
-// Memory photos as a big frameless slideshow up in the night sky, behind the fire.
+// Memory photos as a row sliding steadily across the night sky, behind the fire.
 // Sits in front of the mountains but behind the clearing, so the ground, rocks,
 // flames and sparks all stay in front of it. Moves every frame from the shared
-// slideshow clock, so it glides smoothly and pauses on the same photo everywhere.
+// slideshow clock, so it glides smoothly and pauses on the same frame everywhere.
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -10,9 +10,9 @@ import { useStore } from '@/lib/store';
 import { shared } from '@/lib/bus';
 import { memoriesTime, slidePosition, loadManifest } from '@/lib/memories';
 
-const POOL = 4; // photos drawn at once: previous, current, next, and the one after
+const POOL = 10; // most photos on screen at once (the row is cut to fit)
 const DIST = 40; // how far in front of the camera the slideshow sits
-const KEEP = 10; // photo textures kept in memory
+const KEEP = 14; // photo textures kept in memory
 const PHOTO_DEPTH = 62; // metres: the depth the photos are tested at (see below)
 
 const mod = (i, n) => ((i % n) + n) % n;
@@ -184,19 +184,22 @@ export default function MemorySky() {
     const portrait = cam.aspect < 0.9;
     const Hv = 2 * DIST * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
     const Wv = Hv * cam.aspect;
-    // the space the main photo fits inside, in the upper part of the screen
-    const boxW = (portrait ? 0.94 : 0.68) * Wv;
-    const boxH = (portrait ? 0.5 : 0.7) * Hv;
-    const cy = (portrait ? 0.1 : 0.07) * Hv;
-    const gap = portrait ? boxW * 0.95 : boxW * 0.9;
+    // every photo gets the same slot in the row and fits inside it
+    const rowH = (portrait ? 0.3 : 0.44) * Hv;
+    const slot = Math.min(rowH * 1.55, (portrait ? 0.82 : 0.5) * Wv);
+    const cy = (portrait ? 0.12 : 0.08) * Hv;
     const tt = t ?? 0;
     const o = s.o;
-    const base = Math.floor(o) - 1;
+    // photos whose slot touches the screen, plus one either side
+    const reach = Math.min(Math.floor(POOL / 2) - 1, Math.ceil(Wv / 2 / slot) + 1);
+    const base = Math.floor(o) - reach;
+    const last = Math.floor(o) + reach;
 
     // warm up the next photos so they are ready before they slide in
-    for (let i = base; i <= base + POOL + 1; i++) fetchPhoto(list[mod(i, n)]);
+    for (let i = base; i <= last + 2; i++) fetchPhoto(list[mod(i, n)]);
 
-    for (let i = base; i < base + POOL; i++) {
+    meshes.forEach((m) => (m.visible = false));
+    for (let i = base; i <= last; i++) {
       const m = meshes[mod(i, POOL)];
       const u = m.userData;
       const e = fetchPhoto(list[mod(i, n)]);
@@ -210,28 +213,26 @@ export default function MemorySky() {
         m.material.needsUpdate = true;
       }
       u.r += ((e.ready ? 1 : 0) - u.r) * (1 - Math.exp(-dt * 4));
-      const rel = i - o;
-      const d = Math.min(1, Math.abs(rel));
-      const vis = clamp(1.75 - Math.abs(rel), 0, 1);
-      const alpha = s.k * vis * u.r;
+      const x = (i - o) * slot;
+      // fade out softly at the screen edges
+      const edge = clamp((Wv / 2 + slot * 0.2 - Math.abs(x)) / (slot * 0.7), 0, 1);
+      const alpha = s.k * edge * u.r;
       m.visible = alpha > 0.003;
       if (!m.visible) continue;
-      // fit the photo itself in the box
-      const w0 = Math.min(boxW, boxH * e.photo) / e.inner;
-      const sc = 1 - 0.24 * d;
-      const w = w0 * sc;
-      const h = (w0 / e.aspect) * sc;
-      const x = rel * gap;
+      // fit the photo itself inside its slot (a small gap between neighbours)
+      const pw = Math.min(slot * 0.9, rowH * e.photo);
+      const w = pw / e.inner;
+      const h = w / e.aspect;
       const y = cy + Math.sin(tt * 0.35 + i * 1.7) * 0.004 * Hv;
       v.set(x, y, -DIST).applyQuaternion(cam.quaternion).add(cam.position);
       m.position.copy(v);
       m.quaternion.copy(cam.quaternion);
       m.scale.set(w, h, 1);
-      // kept a little below full brightness so the bloom does not flare; neighbours dimmer
-      const b = 0.88 * (1 - 0.55 * d);
+      // kept a little below full brightness so the bloom does not flare
+      const b = 0.82;
       m.material.color.setRGB(b, b * 0.97, b * 0.93);
       m.material.opacity = alpha;
-      m.renderOrder = d < 0.5 ? -6 : -7; // after the village lights (-8); centre photo on top
+      m.renderOrder = -6; // after the village lights (-8)
     }
   });
 
