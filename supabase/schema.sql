@@ -38,6 +38,8 @@ alter table public.fire_state add column if not exists cheer_at timestamptz;
 alter table public.fire_state add column if not exists cheer_text text not null default '';
 alter table public.fire_state add column if not exists song_at timestamptz;
 alter table public.fire_state add column if not exists song_title text not null default '';
+-- which lyric line everyone is on (the fire keeper steps through them)
+alter table public.fire_state add column if not exists song_line integer not null default 0;
 -- memory photos paused by the fire keeper (null = playing)
 alter table public.fire_state add column if not exists memories_paused_at timestamptz;
 -- Kahoot quiz button: the link, and whether everyone can see the button

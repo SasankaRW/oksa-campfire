@@ -4,6 +4,7 @@ import { useStore } from '@/lib/store';
 import { adminAction } from '@/lib/realtime';
 import { COUNTDOWN_SECONDS, MAX_COUNTDOWN_SECONDS, formatCountdown } from '@/lib/config';
 import { resumeStart, centreIndex, loadManifest } from '@/lib/memories';
+import { SONGS, songByTitle } from '@/lib/songs';
 
 /* What each action changes, applied instantly on this screen while the server confirms. */
 function optimistic(action, extra, T) {
@@ -31,7 +32,9 @@ function optimistic(action, extra, T) {
     case 'cheer':
       return { cheer_at: T + 1200, cheer_text: extra.text || '' };
     case 'song_start':
-      return { song_at: T, song_title: extra.title || '' };
+      return { song_at: T, song_title: extra.title || '', song_line: 0 };
+    case 'song_line':
+      return { song_line: extra.line };
     case 'song_stop':
       return { song_at: null };
     case 'logs_open':
@@ -117,6 +120,7 @@ export default function AdminPanel() {
   const [songTitle, setSongTitle] = useState('');
   const [filter, setFilter] = useState('');
   const [quizUrl, setQuizUrl] = useState(null); // null until loaded from the fire
+  const songLyrics = fire.song_at ? songByTitle(fire.song_title) : null;
   const toastTimer = useRef(null);
   const confirmTimer = useRef(null);
 
@@ -462,14 +466,40 @@ export default function AdminPanel() {
                   <div className="card2-title">Sing-along</div>
                   {!fire.song_at ? (
                     <>
+                      {SONGS.map((s) => (
+                        <Btn key={s.title} busy={!!pending['song']} className="primary-soft" onClick={() => run('song_start', { title: s.title }, 'song', 'Sing-along on')}>
+                          Start “{s.title}” with lyrics
+                        </Btn>
+                      ))}
+                      <p className="hint2">Or any other song (no lyrics):</p>
                       <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Song name" />
-                      <Btn busy={!!pending['song']} className="primary-soft" onClick={() => run('song_start', { title: songTitle }, 'song', 'Sing-along on')}>
+                      <Btn busy={!!pending['song']} onClick={() => run('song_start', { title: songTitle }, 'song', 'Sing-along on')}>
                         Start sing-along
                       </Btn>
                     </>
                   ) : (
                     <>
                       <p className="hint2">Now singing: {fire.song_title || 'Campfire song'}</p>
+                      {songLyrics && (
+                        <div className="lyric-ctl">
+                          <div className="hint2">
+                            Line {Math.min(fire.song_line || 0, songLyrics.lines.length - 1) + 1} of {songLyrics.lines.length} on every screen:
+                          </div>
+                          <div className="lyric-now">{songLyrics.lines[Math.min(fire.song_line || 0, songLyrics.lines.length - 1)].replace(' / ', '\n')}</div>
+                          <div className="admin-grid two">
+                            <Btn disabled={(fire.song_line || 0) <= 0}
+                              onClick={() => { const line = Math.max(0, (fire.song_line || 0) - 1); run('song_line', { line }, 'songline' + line, ''); }}
+                            >
+                              ◀ Back
+                            </Btn>
+                            <Btn className="primary-soft" disabled={(fire.song_line || 0) >= songLyrics.lines.length - 1}
+                              onClick={() => { const line = (fire.song_line || 0) + 1; run('song_line', { line }, 'songline' + line, ''); }}
+                            >
+                              Next line ▶
+                            </Btn>
+                          </div>
+                        </div>
+                      )}
                       <Btn busy={!!pending['song']} onClick={() => run('song_stop', {}, 'song', 'Sing-along ended')}>
                         End sing-along
                       </Btn>

@@ -7,6 +7,7 @@ import { useStore } from '@/lib/store';
 import { emit } from '@/lib/bus';
 import { BEAT } from '@/lib/beat';
 import { playClap } from '@/lib/audio';
+import { songByTitle } from '@/lib/songs';
 
 function hash(n) {
   const s = Math.sin(n * 91.7 + 12.3) * 43758.5453;
@@ -66,9 +67,25 @@ export default function Moments({ now }) {
       )}
 
       {song && <SongLayer key={fire.song_at} songAt={fire.song_at} title={song} />}
+      {song && <Lyrics title={fire.song_title} line={fire.song_line || 0} />}
     </>
   );
 }
+
+// The lyric line the fire keeper is on, with the lines either side faded.
+const split = (s) => s.split(' / ').map((p, i) => <span key={i}>{p}</span>);
+const Lyrics = memo(function Lyrics({ title, line }) {
+  const song = songByTitle(title);
+  if (!song) return null;
+  const n = Math.min(line, song.lines.length - 1);
+  return (
+    <div className="lyrics" aria-live="polite">
+      <div className="lyric dim">{n > 0 ? split(song.lines[n - 1]) : null}</div>
+      <div key={n} className="lyric now">{split(song.lines[n])}</div>
+      <div className="lyric dim">{n < song.lines.length - 1 ? split(song.lines[n + 1]) : null}</div>
+    </div>
+  );
+});
 
 // Sing-along: notes rising from the fire, a warm glow and a banner that pulse
 // on a shared beat, and tap-anywhere to clap along. Everything is pure CSS

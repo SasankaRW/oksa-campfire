@@ -326,3 +326,14 @@ input::placeholder { color: #5a554d; }
 .centre-photo-label { font-size: 13px; color: var(--ink); margin-bottom: 2px; }
 .centre-photo.paused { border-color: rgba(255,180,90,.7); background: rgba(255,160,60,.08); box-shadow: 0 0 18px rgba(255,150,60,.25); }
 .centre-photo.paused img { outline: 2px solid #ffc46b; outline-offset: 1px; }
+
+/* sing-along lyrics: the line everyone is on, with the lines either side faded */
+.lyrics { position: absolute; left: 50%; top: 17vh; transform: translateX(-50%); z-index: 10; width: min(900px, calc(100vw - 32px)); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; pointer-events: none; font-family: 'Noto Serif Sinhala', var(--serif); animation: fadeIn .8s ease both; transition: opacity .6s; }
+.lyric { display: flex; flex-direction: column; align-items: center; line-height: 1.5; text-shadow: 0 2px 12px #000, 0 0 2px #000; }
+.lyric.dim { min-height: 1.5em; font-size: clamp(14px, 1.7vw, 18px); color: rgba(246,231,201,.45); }
+.lyric.now { padding: 10px 24px; border-radius: 18px; background: rgba(16,12,6,.55); border: 1px solid rgba(226,189,110,.3); backdrop-filter: blur(8px); font-size: clamp(21px, 3vw, 34px); font-weight: 600; color: #ffe4ad; text-shadow: 0 0 22px rgba(255,150,60,.45), 0 2px 10px #000; animation: lyricIn .45s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes lyricIn { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+.lyric-ctl { display: flex; flex-direction: column; gap: 8px; }
+.lyric-now { white-space: pre-line; font-family: 'Noto Serif Sinhala', var(--serif); font-size: 17px; line-height: 1.5; color: #ffe4ad; padding: 8px 12px; border-radius: 10px; background: rgba(255,170,80,.08); }
+@media (max-width: 700px) { .lyrics { top: 128px; gap: 6px; } .lyric.now { padding: 8px 14px; } }
+@media (prefers-reduced-motion: reduce) { .lyric.now { animation: none; } }
