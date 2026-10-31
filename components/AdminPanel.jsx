@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { adminAction } from '@/lib/realtime';
 import { COUNTDOWN_SECONDS, MAX_COUNTDOWN_SECONDS, formatCountdown } from '@/lib/config';
+import { resumeStart, centreIndex, loadManifest } from '@/lib/memories';
 
 /* What each action changes, applied instantly on this screen while the server confirms. */
 function optimistic(action, extra, T) {
@@ -25,7 +26,7 @@ function optimistic(action, extra, T) {
     }
     case 'memories_resume': {
       const f = useStore.getState().fire;
-      return f.memories_at && f.memories_paused_at ? { memories_at: f.memories_at + (T - f.memories_paused_at), memories_paused_at: null } : null;
+      return f.memories_at && f.memories_paused_at ? { memories_at: resumeStart(f.memories_at, f.memories_paused_at, T), memories_paused_at: null } : null;
     }
     case 'cheer':
       return { cheer_at: T + 1200, cheer_text: extra.text || '' };
@@ -49,6 +50,32 @@ const TABS = [
   ['guests', 'Guests'],
   ['setup', 'Rehearse'],
 ];
+
+// Live thumbnail of the photo in the middle of the row: the one everyone focuses on when you pause.
+function CentrePhoto({ fire }) {
+  const [list, setList] = useState([]);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    loadManifest().then(setList);
+    const id = setInterval(() => tick((x) => x + 1), 300);
+    return () => clearInterval(id);
+  }, []);
+  const i = centreIndex(fire, useStore.getState().now());
+  if (i === null || !list.length) return null;
+  const p = list[i % list.length];
+  return (
+    <div className={`centre-photo ${fire.memories_paused_at ? 'paused' : ''}`}>
+      <img src={p.src} alt="" />
+      <div>
+        <div className="centre-photo-label">{fire.memories_paused_at ? 'Everyone is looking at' : 'In the middle now'}</div>
+        <div className="hint2">
+          Photo {(i % list.length) + 1} of {list.length}
+          {fire.memories_paused_at ? '' : ' · Pause to bring it to the centre of every screen'}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Spinner() {
   return <span className="spin" aria-hidden="true" />;
@@ -373,6 +400,8 @@ export default function AdminPanel() {
                       Start photos
                     </Btn>
                   ) : (
+                    <>
+                    <CentrePhoto fire={fire} />
                     <div className="admin-grid two">
                       {fire.memories_paused_at ? (
                         <Btn busy={!!pending['mempause']} className="primary-soft" onClick={() => run('memories_resume', {}, 'mempause', 'Photos playing')}>
@@ -387,6 +416,7 @@ export default function AdminPanel() {
                         Stop photos
                       </Btn>
                     </div>
+                    </>
                   )}
                 </div>
 

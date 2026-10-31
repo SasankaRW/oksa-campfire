@@ -8,7 +8,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '@/lib/store';
 import { shared } from '@/lib/bus';
-import { memoriesTime, slidePosition, loadManifest } from '@/lib/memories';
+import { memoriesTime, rowTarget, loadManifest } from '@/lib/memories';
 
 const POOL = 10; // most photos on screen at once (the row is cut to fit)
 const DIST = 40; // how far in front of the camera the slideshow sits
@@ -123,7 +123,7 @@ async function compose({ src, caption }) {
 
 export default function MemorySky() {
   const photos = useRef([]);
-  const S = useRef({ k: 0, o: 0 });
+  const S = useRef({ k: 0, o: 0, f: 0, init: false });
   const geo = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
   const meshes = useMemo(
     () =>
@@ -173,7 +173,17 @@ export default function MemorySky() {
     const on = t !== null && n > 0 && !shared.keepsake;
     const s = S.current;
     s.k += ((on ? 1 : 0) - s.k) * (1 - Math.exp(-dt * (shared.keepsake ? 10 : on ? 1.1 : 1.8)));
-    if (t !== null) s.o = slidePosition(t);
+    const paused = !!st.fire.memories_paused_at;
+    if (t !== null) {
+      // glide toward the shared position instead of snapping to it, so a late
+      // pause message or a clock correction never makes the row jump
+      const target = rowTarget(st.fire, st.now());
+      if (!s.init || Math.abs(target - s.o) > 3) s.o = target;
+      else s.o += (target - s.o) * (1 - Math.exp(-dt * (paused ? 2.6 : 5)));
+      s.init = true;
+    } else s.init = false;
+    // focus: the centre photo grows and the others step back while paused
+    s.f += ((paused && t !== null ? 1 : 0) - s.f) * (1 - Math.exp(-dt * 2.6));
     shared.memK = s.k;
     if (s.k < 0.003 || !n) {
       meshes.forEach((m) => (m.visible = false));
@@ -185,11 +195,15 @@ export default function MemorySky() {
     const Hv = 2 * DIST * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
     const Wv = Hv * cam.aspect;
     // every photo gets the same slot in the row and fits inside it
-    const rowH = (portrait ? 0.3 : 0.44) * Hv;
-    const slot = Math.min(rowH * 1.55, (portrait ? 0.82 : 0.5) * Wv);
+    const rowH = (portrait ? 0.36 : 0.52) * Hv;
+    const slot = Math.min(rowH * 1.55, (portrait ? 0.86 : 0.52) * Wv);
+    // the box the focused photo grows into when paused
+    const focusW = (portrait ? 0.94 : 0.66) * Wv;
+    const focusH = (portrait ? 0.55 : 0.74) * Hv;
     const cy = (portrait ? 0.12 : 0.08) * Hv;
     const tt = t ?? 0;
     const o = s.o;
+    const f = s.f;
     // photos whose slot touches the screen, plus one either side
     const reach = Math.min(Math.floor(POOL / 2) - 1, Math.ceil(Wv / 2 / slot) + 1);
     const base = Math.floor(o) - reach;
@@ -197,6 +211,12 @@ export default function MemorySky() {
 
     // warm up the next photos so they are ready before they slide in
     for (let i = base; i <= last + 2; i++) fetchPhoto(list[mod(i, n)]);
+
+    // how much the neighbours move aside to make room for the focused photo
+    const ce = fetchPhoto(list[mod(Math.round(o), n)]);
+    const cpw = Math.min(slot * 0.9, rowH * ce.photo);
+    const cfw = Math.min(focusW, focusH * ce.photo);
+    const push = f * Math.max(0, (cfw - cpw) / 2 + slot * 0.05);
 
     meshes.forEach((m) => (m.visible = false));
     for (let i = base; i <= last; i++) {
@@ -213,26 +233,30 @@ export default function MemorySky() {
         m.material.needsUpdate = true;
       }
       u.r += ((e.ready ? 1 : 0) - u.r) * (1 - Math.exp(-dt * 4));
-      const x = (i - o) * slot;
+      const rel = i - o;
+      const c = clamp(1 - Math.abs(rel), 0, 1); // 1 = this photo is in the middle
+      const x = rel * slot + push * clamp(rel * 2, -1, 1);
       // fade out softly at the screen edges
       const edge = clamp((Wv / 2 + slot * 0.2 - Math.abs(x)) / (slot * 0.7), 0, 1);
-      const alpha = s.k * edge * u.r;
+      const alpha = s.k * edge * u.r * (1 - 0.45 * f * (1 - c));
       m.visible = alpha > 0.003;
       if (!m.visible) continue;
-      // fit the photo itself inside its slot (a small gap between neighbours)
-      const pw = Math.min(slot * 0.9, rowH * e.photo);
+      // fit the photo inside its slot (a small gap between neighbours), or the focus box
+      const pw0 = Math.min(slot * 0.9, rowH * e.photo);
+      const pw1 = Math.min(focusW, focusH * e.photo);
+      const pw = pw0 + (pw1 - pw0) * f * c;
       const w = pw / e.inner;
       const h = w / e.aspect;
-      const y = cy + Math.sin(tt * 0.35 + i * 1.7) * 0.004 * Hv;
+      const y = cy + Math.sin(tt * 0.35 + i * 1.7) * 0.004 * Hv * (1 - f);
       v.set(x, y, -DIST).applyQuaternion(cam.quaternion).add(cam.position);
       m.position.copy(v);
       m.quaternion.copy(cam.quaternion);
       m.scale.set(w, h, 1);
-      // kept a little below full brightness so the bloom does not flare
-      const b = 0.82;
+      // kept below full brightness so the bloom does not flare; others dim while one is focused
+      const b = (0.82 + 0.06 * f * c) * (1 - 0.6 * f * (1 - c));
       m.material.color.setRGB(b, b * 0.97, b * 0.93);
       m.material.opacity = alpha;
-      m.renderOrder = -6; // after the village lights (-8)
+      m.renderOrder = c > 0.5 ? -6 : -7; // after the village lights (-8); the middle photo on top
     }
   });
 

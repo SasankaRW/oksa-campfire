@@ -312,3 +312,10 @@ input::placeholder { color: #5a554d; }
 .photo-btn img { width: 22px; height: 22px; object-fit: cover; border-radius: 4px; }
 @media (max-width: 700px) { .photo-btn .long { display: none; } }
 @media (min-width: 701px) { .photo-btn .short { display: none; } }
+
+/* admin: the photo in the middle of the row */
+.centre-photo { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,.08); transition: border-color .3s, background .3s; }
+.centre-photo img { width: 96px; height: 64px; object-fit: cover; border-radius: 6px; flex: none; }
+.centre-photo-label { font-size: 13px; color: var(--ink); margin-bottom: 2px; }
+.centre-photo.paused { border-color: rgba(255,180,90,.7); background: rgba(255,160,60,.08); box-shadow: 0 0 18px rgba(255,150,60,.25); }
+.centre-photo.paused img { outline: 2px solid #ffc46b; outline-offset: 1px; }

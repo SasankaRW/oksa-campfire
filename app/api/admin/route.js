@@ -4,6 +4,7 @@ import { DEMO_NAMES } from '@/lib/demoNames';
 import { randomBytes } from 'crypto';
 import { clean } from '@/lib/profanity';
 import { COUNTDOWN_SECONDS, MAX_COUNTDOWN_SECONDS } from '@/lib/config';
+import { resumeStart } from '@/lib/memories';
 
 export const dynamic = 'force-dynamic';
 // Run next to the Supabase database (Singapore) so each query is a few ms, not a trip across the Pacific.
@@ -103,8 +104,8 @@ export async function POST(req) {
         patch = { memories_paused_at: iso(now) };
       } else {
         if (!paused) return Response.json({ ok: true, fire: cur });
-        // shift the start forward by the time spent paused, so it carries on from the same photo
-        patch = { memories_at: iso(Date.parse(cur.memories_at) + (now - paused)), memories_paused_at: null };
+        // carry on from the photo everyone was focused on
+        patch = { memories_at: iso(resumeStart(Date.parse(cur.memories_at), paused, now)), memories_paused_at: null };
       }
       break;
     }
