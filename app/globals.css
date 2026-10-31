@@ -278,7 +278,14 @@ input::placeholder { color: #5a554d; }
 
 /* while framing the keepsake, hide floating photos so the shot is just the fire */
 .mine .btn { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
-@media (max-width: 700px) { .mine { gap: 10px; padding: 10px 10px 10px 14px; } .mine .btn { padding: 0 11px; } .mine-actions { gap: 6px; flex-shrink: 0; } }
+/* phones: name on top, the buttons in an even row underneath */
+@media (max-width: 700px) {
+  .mine { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 12px 12px; }
+  .mine-name { font-size: 19px; line-height: 1.2; }
+  .mine-actions { gap: 8px; width: 100%; }
+  .mine-actions .btn, .mine-actions .btn.big-ish { flex: 1 1 0; min-width: 0; justify-content: center; height: 42px !important; padding: 0 8px; font-size: 14px !important; }
+}
+@media (max-width: 360px) { .mine-actions { gap: 6px; } .mine-actions .btn, .mine-actions .btn.big-ish { font-size: 13px !important; padding: 0 4px; gap: 5px; } .photo-btn img { width: 18px; height: 18px; } }
 /* on phones the "X laid a log" lines sit where the photos float, so they step aside while photos play */
 @media (max-width: 700px) { main.stage:has(.memories-live) .feed { opacity: 0; } }
 @media (max-width: 700px) { .song-wrap { bottom: 118px; } .song { padding: 10px 16px; gap: 10px; } .song-notes span { bottom: 40vh; } }

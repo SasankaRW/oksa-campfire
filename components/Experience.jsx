@@ -420,7 +420,7 @@ export default function Experience({ mode = 'guest' }) {
               <input type="file" accept="image/*" onChange={pickPhoto} />
               {photo ? <img src={photo} alt="" /> : null}
               <span className="long">{photo ? 'Change photo' : 'Add photo'}</span>
-              {!photo && <span className="short">Photo</span>}
+              <span className="short">Photo</span>
             </label>
           </div>
         </div>
