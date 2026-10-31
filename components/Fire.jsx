@@ -82,19 +82,30 @@ void main(){
   float y01 = vUv.y;
   float n  = texture2D(uNoise, vec2(vUv.x * 0.45 + vSeed, vUv.y * 0.35 - uTime * 0.55 + vSeed * 1.7)).r;
   float n2 = texture2D(uNoise, vec2(vUv.x * 0.9 + vSeed * 2.3, vUv.y * 0.7 - uTime * 0.9)).r;
-  p.x += (n - 0.5) * 1.1 * (0.25 + y01);
-  float w = mix(1.0, 0.22, pow(y01, 0.9));
-  float d = length(vec2(p.x / w, (p.y + 0.25) * 0.82));
-  float body = 1.0 - smoothstep(0.3, 1.0, d);
-  body *= smoothstep(0.25, 0.62, n2 + (1.0 - d) * 0.45 - y01 * 0.15);
+#if DETAIL
+  // PCs: a finer layer of noise for more ragged edges
+  float n3 = texture2D(uNoise, vec2(vUv.x * 1.9 + vSeed * 3.1, vUv.y * 1.4 - uTime * 1.7)).r;
+#else
+  float n3 = n2;
+#endif
+  // sway more towards the tip, like a tongue of flame in moving air
+  p.x += (n - 0.5) * 1.15 * (0.2 + y01 * 1.1);
+  // teardrop: round at the base, drawn out to a sharp point at the top
+  float w = mix(1.0, 0.08, pow(y01, 0.75));
+  float d = length(vec2(p.x / w, (p.y + 0.3) * 0.8));
+  float body = 1.0 - smoothstep(0.55, 0.95, d);
+  // crisp, broken edges instead of a soft glow
+  float erode = n2 * 0.65 + n3 * 0.35 + (1.0 - d) * 0.55 - y01 * 0.3;
+  body *= smoothstep(0.36, 0.5, erode);
   float fadeIn = smoothstep(0.0, 0.08, vAge);
-  float fadeOut = 1.0 - smoothstep(0.45, 1.0, vAge);
-  float edge = smoothstep(0.0, 0.28, vUv.y) * smoothstep(1.0, 0.8, vUv.y) * smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
+  float fadeOut = 1.0 - smoothstep(0.4, 1.0, vAge);
+  float edge = smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.85, vUv.y) * smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
   float a = body * fadeIn * fadeOut * edge;
-  float heat = clamp(a * vHeat * (1.35 - vAge) + (1.0 - y01) * 0.2 * a, 0.0, 1.0);
-  vec3 c = mix(vec3(0.22, 0.015, 0.0), vec3(0.95, 0.2, 0.015), smoothstep(0.0, 0.3, heat));
-  c = mix(c, vec3(1.0, 0.5, 0.1), smoothstep(0.3, 0.65, heat));
-  c = mix(c, vec3(1.0, 0.8, 0.45), smoothstep(0.75, 1.0, heat));
+  // hot and yellow low down and in the middle; cooling to orange and deep red at the tips
+  float heat = clamp(vHeat * (1.25 - vAge * 0.9) * (1.15 - y01 * 0.85) * (0.6 + 0.4 * (1.0 - d)), 0.0, 1.0);
+  vec3 c = mix(vec3(0.32, 0.025, 0.0), vec3(0.95, 0.2, 0.012), smoothstep(0.05, 0.35, heat));
+  c = mix(c, vec3(1.0, 0.44, 0.05), smoothstep(0.35, 0.6, heat));
+  c = mix(c, vec3(1.0, 0.68, 0.2), smoothstep(0.62, 0.9, heat));
   gl_FragColor = vec4(c * a * uBright, 1.0);
 }`;
 
@@ -243,12 +254,13 @@ export default function Fire({ quality = 'high' }) {
       new THREE.ShaderMaterial({
         vertexShader: flameVert,
         fragmentShader: flameFrag,
+        defines: { DETAIL: hi ? 1 : 0 },
         uniforms: { uNoise: { value: tex }, uTime: { value: 0 }, uBright: { value: 0.42 } },
         blending: THREE.AdditiveBlending,
         transparent: true,
         depthWrite: false,
       }),
-    [tex],
+    [tex, hi],
   );
   const smokeMat = useMemo(
     () =>
@@ -538,7 +550,8 @@ export default function Fire({ quality = 'high' }) {
     if (lit) rate = I * (hi ? 620 : 300) * (1 + maxRing * 0.1);
     S.flAcc = (S.flAcc || 0) + rate * dt;
     const spread = 0.3 + maxRing * 0.07;
-    flameMat.uniforms.uBright.value = 0.22 / (1 + maxRing * 0.07);
+    // PCs draw about twice as many flame pieces: each one is dimmer so they add detail, not glare
+    flameMat.uniforms.uBright.value = (hi ? 0.2 : 0.3) / (1 + maxRing * 0.07);
     {
       const tv = burning.length || honourBurning.length
         ? { radius: Math.max(0.3 + maxRing * 0.13, honourBurning.length ? 0.6 : 0), top: Math.max(1.0 + 0.11 * maxRing, honourBurning.length ? 1.9 : 0), cx: 0, cz: 0 }

@@ -38,10 +38,11 @@ vec2 hitBox(vec3 o, vec3 d){
 }
 // black-body style ramp: deep red tips -> orange -> yellow -> pale core
 vec3 ramp(float t){
-  vec3 c = mix(vec3(0.18, 0.01, 0.0), vec3(0.85, 0.12, 0.01), smoothstep(0.0, 0.25, t));
-  c = mix(c, vec3(1.0, 0.38, 0.04), smoothstep(0.25, 0.5, t));
-  c = mix(c, vec3(1.0, 0.66, 0.18), smoothstep(0.5, 0.75, t));
-  c = mix(c, vec3(1.0, 0.86, 0.55), smoothstep(0.82, 1.0, t));
+  // no blue in the hottest colour, so overlapping flame stays yellow instead of washing out to white
+  vec3 c = mix(vec3(0.22, 0.012, 0.0), vec3(0.85, 0.13, 0.008), smoothstep(0.0, 0.25, t));
+  c = mix(c, vec3(1.0, 0.36, 0.03), smoothstep(0.25, 0.5, t));
+  c = mix(c, vec3(1.0, 0.6, 0.12), smoothstep(0.5, 0.78, t));
+  c = mix(c, vec3(1.0, 0.78, 0.32), smoothstep(0.85, 1.0, t));
   return c;
 }
 void main(){
@@ -74,7 +75,11 @@ void main(){
     d = smoothstep(0.3, 0.85, d * (0.25 + n * 1.5));
     // fast, fine erosion breaks the upper flame into separate licking tongues
     float ero = texture(uNoise, q * 2.4 + vec3(0.0, -uTime * 1.3, 0.0)).r;
-    d *= smoothstep(0.18, 0.55, ero + (1.0 - h) * 0.55);
+#if DETAIL
+    // PCs: an extra layer of fine, fast licks
+    ero = ero * 0.7 + texture(uNoise, q * 5.1 + vec3(0.21, -uTime * 2.4, 0.43)).r * 0.3;
+#endif
+    d *= smoothstep(0.32, 0.5, ero + (1.0 - h) * 0.5);
     // hotter near the axis and the fuel, cooler and redder at the edges and tips
     float core = 1.0 - smoothstep(0.0, width * 0.7, r);
     float temp = clamp(d * (0.75 + core * 0.45) * (1.08 - h * 0.85), 0.0, 1.0);
@@ -95,12 +100,12 @@ export default function FireVolume({ quality = 'high' }) {
         glslVersion: THREE.GLSL3,
         vertexShader: vert,
         fragmentShader: frag,
-        defines: { STEPS: quality === 'high' ? 32 : 18 },
+        defines: { STEPS: quality === 'high' ? 40 : 18, DETAIL: quality === 'high' ? 1 : 0 },
         uniforms: {
           uNoise: { value: noise3D() },
           uTime: { value: 0 },
           uI: { value: 0 },
-          uBright: { value: 0.5 },
+          uBright: { value: 0.44 },
           uSize: { value: new THREE.Vector3(2, 3, 2) },
         },
         transparent: true,

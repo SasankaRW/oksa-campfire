@@ -106,13 +106,14 @@ export function makeLogMaterial({ instanced = true } = {}) {
         diffuseColor.rgb = mix(bark, charC, gChar);
         // glowing alligator cracks and ember patches, strongest inside the pile
         float cr = fbm3(q);
-        float crack = 1.0 - smoothstep(0.0, 0.04, abs(cr - 0.5));
+        float crack = 1.0 - smoothstep(0.01, 0.06, abs(cr - 0.5));
         float cell = fbm3(q*0.55 + 4.0);
         float flick = 0.45 + 0.55*fbm3(vec3(sp*2.0 + vec2(0.0, uTime*0.45 + vSeed), along*1.2));
         float deep = smoothstep(0.18, 0.7, gBurn);
         float glowAmt = gChar * flick * (crack * deep * (0.06 + 0.94*heatZone) + smoothstep(0.55, 0.8, cell) * heatZone * (0.08 + deep));
         gEmit = vec3(1.0, 0.25, 0.035) * (glowAmt * 0.85 + gChar * heatZone * 0.05) * uGlow;
-        if (uBirch > 0.5) gEmit = vec3(1.0, 0.58, 0.16) * length(gEmit) * 1.25;
+        // birch embers glow the same deep orange as the rest (pale yellow read as green on white bark)
+        if (uBirch > 0.5) gEmit = vec3(1.0, 0.3, 0.05) * length(gEmit) * 1.1;
         gEmit += vec3(1.0, 0.62, 0.25) * uSelfGlow;
         if (abs(vInst - uHighlight) < 0.5) gEmit += vec3(1.0, 0.75, 0.35) * uHighlightAmt * 0.35;
         `,
