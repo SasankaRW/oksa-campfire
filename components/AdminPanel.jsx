@@ -33,6 +33,8 @@ function optimistic(action, extra, T) {
       return { song_at: T, song_title: extra.title || '' };
     case 'song_stop':
       return { song_at: null };
+    case 'logs_open':
+      return { logs_open: !!extra.on };
     case 'quiz':
       return { quiz_on: !!extra.on, ...(typeof extra.url === 'string' ? { quiz_url: extra.url.trim() } : {}) };
     default:
@@ -244,6 +246,7 @@ export default function AdminPanel() {
             {fire.memories_at ? <div className={`chip ${fire.memories_paused_at ? 'warn' : 'on'}`}>{fire.memories_paused_at ? 'Photos paused' : 'Photos playing'}</div> : null}
             {fire.song_at ? <div className="chip on">Sing-along</div> : null}
             {fire.quiz_on ? <div className="chip on">Quiz button showing</div> : null}
+            <div className={`chip ${fire.logs_open ? 'on' : ''}`}>{fire.logs_open ? 'Log placing open' : 'Log placing closed'}</div>
           </div>
 
           <nav className="admin-tabs" role="tablist">
@@ -258,6 +261,27 @@ export default function AdminPanel() {
             {/* ------------------------------ FIRE ------------------------------ */}
             {tab === 'fire' && (
               <section>
+                <div className="card2">
+                  <div className="card2-title">Log placing</div>
+                  <p className="hint2">
+                    {fire.logs_open
+                      ? `Guests can see the “Place my log” button now. ${logs.length} ${logs.length === 1 ? 'log' : 'logs'} laid so far.`
+                      : 'Guests sign in but cannot lay their log yet. Open it when you want everyone to place their logs.'}
+                  </p>
+                  {!fire.logs_open ? (
+                    <Btn busy={!!pending['logs']} className="primary-soft"
+                      onClick={() => run('logs_open', { on: true }, 'logs', 'Log placing is open')}
+                    >
+                      Open log placing for everyone
+                    </Btn>
+                  ) : (
+                    <Btn busy={!!pending['logs']}
+                      onClick={() => run('logs_open', { on: false }, 'logs', 'Log placing closed')}
+                    >
+                      Close log placing
+                    </Btn>
+                  )}
+                </div>
                 {!lit && !counting && (
                   <>
                     <p className="hint2">When everyone has laid their log, shoot the fire arrow. A countdown shows on every screen first.</p>

@@ -97,10 +97,15 @@ export default function Experience({ mode = 'guest' }) {
     : counting
       ? 'The fire arrow is drawn…'
       : scheduled
-        ? `The fire will be lit in ${formatCountdown(igniteIn)}. Lay your log.`
-        : EVENT.waiting;
+        ? `The fire will be lit in ${formatCountdown(igniteIn)}.${fire.logs_open ? ' Lay your log.' : ''}`
+        : fire.logs_open
+          ? EVENT.waiting
+          : EVENT.waitingClosed;
   const isLeader = !!leaderToken && leaderMe && !leaderMe.error;
-  const handActive = mode === 'guest' && !leaderToken && ready && !!profile && !mine;
+  // signed in and still holding a log
+  const holding = mode === 'guest' && !leaderToken && ready && !!profile && !mine;
+  // the log in hand, the drag and the button only appear while the fire keeper has log placing open
+  const handActive = holding && !!fire.logs_open;
 
   useEffect(() => {
     if (!ready || !leaderToken) return;
@@ -331,6 +336,12 @@ export default function Experience({ mode = 'guest' }) {
             {busy ? 'Placing your log…' : 'Place my log on the fire'}
           </button>
           {error && <div className="error">{error}</div>}
+        </div>
+      )}
+
+      {holding && !fire.logs_open && (
+        <div className="hint waiting-hint">
+          <div className="hint-text">Welcome, {profile.name}. The fire keeper will call everyone to lay their logs soon.</div>
         </div>
       )}
 

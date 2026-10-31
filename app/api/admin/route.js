@@ -129,6 +129,10 @@ export async function POST(req) {
       }
       break;
     }
+    case 'logs_open':
+      // show or hide the "Place my log" button on every guest's screen
+      patch = { logs_open: !!body.on };
+      break;
     case 'embers':
       patch = { mode: body.mode === 'embers' ? 'embers' : 'normal' };
       break;
@@ -140,7 +144,7 @@ export async function POST(req) {
         db.from('logs').delete().neq('device_id', ''),
         db.from('leaders').update({ called_at: null, laid_at: null }).gte('slot', 0),
       ]);
-      patch = { ignite_at: null, stoke_at: null, memories_at: null, memories_paused_at: null, cheer_at: null, song_at: null, quiz_on: false, mode: 'normal', reset_at: iso(now), leaders_rev: rev };
+      patch = { ignite_at: null, stoke_at: null, memories_at: null, memories_paused_at: null, cheer_at: null, song_at: null, quiz_on: false, logs_open: false, mode: 'normal', reset_at: iso(now), leaders_rev: rev };
       break;
     case 'seed': {
       const n = Math.max(1, Math.min(200, Number(body.count || 20)));
@@ -165,7 +169,7 @@ export async function POST(req) {
     .select()
     .single();
   if (error) {
-    const hint = /memories_paused_at|quiz_/.test(error.message || '') ? ' Run supabase/schema.sql again in Supabase.' : '';
+    const hint = /memories_paused_at|quiz_|logs_open/.test(error.message || '') ? ' Run supabase/schema.sql again in Supabase.' : '';
     return Response.json({ error: 'Could not update the fire.' + hint }, { status: 500 });
   }
   return Response.json({ ok: true, fire: data });

@@ -85,7 +85,13 @@ input::placeholder { color: #5a554d; }
   0%, 100% { box-shadow: 0 0 0 0 rgba(255,150,50,0.75), 0 0 18px rgba(255,140,40,0.35); transform: scale(1); }
   50% { box-shadow: 0 0 0 14px rgba(255,150,50,0), 0 0 42px rgba(255,140,40,0.75); transform: scale(1.04); }
 }
-@media (prefers-reduced-motion: reduce) { .pulse, .hint-arrows span { animation: none; opacity: 1; } }
+/* the place button flashes in when the fire keeper opens log placing */
+.hint .btn.place.pulse { animation: placeIn .8s cubic-bezier(.2,.7,.2,1) both, pulseGlow 1.4s ease-in-out .8s infinite; }
+@keyframes placeIn { 0% { opacity: 0; transform: scale(.7); } 45% { opacity: 1; transform: scale(1.08); filter: brightness(1.5); } 100% { transform: scale(1); } }
+/* signed in, waiting for the fire keeper to open log placing */
+.waiting-hint .hint-text { font-size: 20px; opacity: .85; animation: waitIn .8s ease both; }
+@keyframes waitIn { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .pulse, .hint .btn.place.pulse, .hint-arrows span, .waiting-hint .hint-text { animation: none; opacity: 1; } }
 @keyframes breathe { 50% { opacity: .55; } }
 
 .mine { position: absolute; right: 28px; bottom: 26px; display: flex; align-items: center; gap: 16px; z-index: 10; background: var(--glass); backdrop-filter: blur(14px); border: 1px solid var(--line); border-radius: 14px; padding: 12px 12px 12px 18px; animation: feedIn .8s ease both; transition: opacity .6s; }

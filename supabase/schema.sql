@@ -43,6 +43,8 @@ alter table public.fire_state add column if not exists memories_paused_at timest
 -- Kahoot quiz button: the link, and whether everyone can see the button
 alter table public.fire_state add column if not exists quiz_url text not null default '';
 alter table public.fire_state add column if not exists quiz_on boolean not null default false;
+-- whether guests can lay their logs right now (the fire keeper opens and closes it)
+alter table public.fire_state add column if not exists logs_open boolean not null default false;
 
 -- ---------- the 5 leaders' honour logs (private: links carry a secret token) ----------
 create table if not exists public.leaders (
