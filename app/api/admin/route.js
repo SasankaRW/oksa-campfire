@@ -113,13 +113,8 @@ export async function POST(req) {
       patch = { cheer_at: iso(now + 1200), cheer_text: clean(body.text || '', 80) };
       break;
     case 'song_start':
-      patch = { song_at: iso(now), song_title: clean(body.title || '', 80), song_line: 0 };
+      patch = { song_at: iso(now), song_title: clean(body.title || '', 80) };
       break;
-    case 'song_line': {
-      const n = Math.floor(Number(body.line));
-      patch = { song_line: Number.isFinite(n) ? Math.max(0, Math.min(500, n)) : 0 };
-      break;
-    }
     case 'song_stop':
       patch = { song_at: null };
       break;

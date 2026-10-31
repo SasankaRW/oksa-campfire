@@ -32,9 +32,7 @@ function optimistic(action, extra, T) {
     case 'cheer':
       return { cheer_at: T + 1200, cheer_text: extra.text || '' };
     case 'song_start':
-      return { song_at: T, song_title: extra.title || '', song_line: 0 };
-    case 'song_line':
-      return { song_line: extra.line };
+      return { song_at: T, song_title: extra.title || '' };
     case 'song_stop':
       return { song_at: null };
     case 'logs_open':
@@ -120,7 +118,6 @@ export default function AdminPanel() {
   const [songTitle, setSongTitle] = useState('');
   const [filter, setFilter] = useState('');
   const [quizUrl, setQuizUrl] = useState(null); // null until loaded from the fire
-  const songLyrics = fire.song_at ? songByTitle(fire.song_title) : null;
   const toastTimer = useRef(null);
   const confirmTimer = useRef(null);
 
@@ -480,26 +477,7 @@ export default function AdminPanel() {
                   ) : (
                     <>
                       <p className="hint2">Now singing: {fire.song_title || 'Campfire song'}</p>
-                      {songLyrics && (
-                        <div className="lyric-ctl">
-                          <div className="hint2">
-                            Line {Math.min(fire.song_line || 0, songLyrics.lines.length - 1) + 1} of {songLyrics.lines.length} on every screen:
-                          </div>
-                          <div className="lyric-now">{songLyrics.lines[Math.min(fire.song_line || 0, songLyrics.lines.length - 1)].replace(' / ', '\n')}</div>
-                          <div className="admin-grid two">
-                            <Btn disabled={(fire.song_line || 0) <= 0}
-                              onClick={() => { const line = Math.max(0, (fire.song_line || 0) - 1); run('song_line', { line }, 'songline' + line, ''); }}
-                            >
-                              ◀ Back
-                            </Btn>
-                            <Btn className="primary-soft" disabled={(fire.song_line || 0) >= songLyrics.lines.length - 1}
-                              onClick={() => { const line = (fire.song_line || 0) + 1; run('song_line', { line }, 'songline' + line, ''); }}
-                            >
-                              Next line ▶
-                            </Btn>
-                          </div>
-                        </div>
-                      )}
+                      {songByTitle(fire.song_title) && <p className="hint2">The lyrics are scrolling up on every screen.</p>}
                       <Btn busy={!!pending['song']} onClick={() => run('song_stop', {}, 'song', 'Sing-along ended')}>
                         End sing-along
                       </Btn>

@@ -67,22 +67,34 @@ export default function Moments({ now }) {
       )}
 
       {song && <SongLayer key={fire.song_at} songAt={fire.song_at} title={song} />}
-      {song && <Lyrics title={fire.song_title} line={fire.song_line || 0} />}
+      {song && <Lyrics key={fire.song_at} songAt={fire.song_at} title={fire.song_title} />}
     </>
   );
 }
 
-// The lyric line the fire keeper is on, with the lines either side faded.
-const split = (s) => s.split(' / ').map((p, i) => <span key={i}>{p}</span>);
-const Lyrics = memo(function Lyrics({ title, line }) {
+// Lyrics drifting slowly up behind everything, about six lines in view. The scroll
+// is one CSS animation timed from the shared song start, so every screen is on
+// the same line, and the song loops round with a short gap between repeats.
+const GAP_ROWS = 6; // blank rows before the first line: it rises in from the bottom
+const Lyrics = memo(function Lyrics({ songAt, title }) {
   const song = songByTitle(title);
+  const rows = song ? song.lines.flatMap((l) => l.split(' / ')) : [];
+  const loop = (GAP_ROWS + rows.length) * (song?.secondsPerRow || 4);
+  const [delay] = useState(() => {
+    const t = (useStore.getState().now() - songAt) / 1000;
+    return -(((t % loop) + loop) % loop);
+  });
   if (!song) return null;
-  const n = Math.min(line, song.lines.length - 1);
+  const block = (k) => [
+    ...Array.from({ length: GAP_ROWS }, (_, i) => <div key={`${k}g${i}`} className="lyric" />),
+    ...rows.map((r, i) => <div key={`${k}${i}`} className="lyric">{r}</div>),
+  ];
   return (
-    <div className="lyrics" aria-live="polite">
-      <div className="lyric dim">{n > 0 ? split(song.lines[n - 1]) : null}</div>
-      <div key={n} className="lyric now">{split(song.lines[n])}</div>
-      <div className="lyric dim">{n < song.lines.length - 1 ? split(song.lines[n + 1]) : null}</div>
+    <div className="lyrics" aria-hidden="true">
+      <div className="lyrics-roll" style={{ animationDuration: `${loop}s`, animationDelay: `${delay}s` }}>
+        {block('a')}
+        {block('b')}
+      </div>
     </div>
   );
 });
