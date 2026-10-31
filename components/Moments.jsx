@@ -67,7 +67,7 @@ export default function Moments({ now }) {
       )}
 
       {song && <SongLayer key={fire.song_at} songAt={fire.song_at} title={song} />}
-      {song && <Lyrics key={fire.song_at} songAt={fire.song_at} title={fire.song_title} />}
+      {song && <Lyrics key={`lyrics${fire.song_at}`}songAt={fire.song_at} title={fire.song_title} />}
     </>
   );
 }
