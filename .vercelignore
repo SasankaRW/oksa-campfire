@@ -1,0 +1,5 @@
+images
+*.tgz
+.claude
+.next
+node_modules
