@@ -1,11 +1,13 @@
 import './globals.css';
 import { EVENT } from '@/lib/config';
+import { THEME } from '@/lib/theme';
 
 export const metadata = {
   title: `${EVENT.title} · ${EVENT.org}`,
   description: 'Lay your log. Watch the fire catch.',
 };
-export const viewport = { width: 'device-width', initialScale: 1, themeColor: '#05070b' };
+// viewportFit 'cover' lets the night sky run under the notch; the UI keeps clear of it with the --safe-* insets
+export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: THEME.bg };
 
 export default function RootLayout({ children }) {
   return (

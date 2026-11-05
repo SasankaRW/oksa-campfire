@@ -6,14 +6,15 @@ import { startRealtime, addLog, leaderInfo, leaderLay } from '@/lib/realtime';
 import { initAudio, muteAudio } from '@/lib/audio';
 import { emit, shared, setZoom } from '@/lib/bus';
 import { EVENT, MAX_NAME, MAX_MESSAGE, formatCountdown } from '@/lib/config';
-import { hash } from '@/lib/layout';
-import AdminPanel from './AdminPanel';
+import { hash } from '@/lib/hash';
 import Moments from './Moments';
 import SceneGuard from './SceneGuard';
 import { makeKeepsake } from '@/lib/keepsake';
 import { loadPhoto, savePhoto, clearPhoto } from '@/lib/memoryPhoto';
 
 const Scene = dynamic(() => import('./Scene'), { ssr: false });
+// only the fire keeper ever sees this, so guests don't download it
+const AdminPanel = dynamic(() => import('./AdminPanel'), { ssr: false });
 
 function useTick(ms = 250) {
   const [, set] = useState(0);
@@ -22,6 +23,9 @@ function useTick(ms = 250) {
     return () => clearInterval(id);
   }, [ms]);
 }
+
+// phones and tablets: don't pop the keyboard up over the welcome card
+const coarsePointer = () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 
 function detectQuality() {
   if (typeof window === 'undefined') return 'high';
@@ -53,6 +57,9 @@ export default function Experience({ mode = 'guest' }) {
   const [leaderMe, setLeaderMe] = useState(null); // { slot, name, title } or { error }
   const [leaderBusy, setLeaderBusy] = useState(false);
   const [keepBusy, setKeepBusy] = useState(false);
+  const [keepErr, setKeepErr] = useState('');
+  const mainRef = useRef(null);
+  const hudRef = useRef(null);
   // optional memory photo: stays on this device only, used in the keepsake
   const [photo, setPhoto] = useState(null);
   const [photoErr, setPhotoErr] = useState('');
@@ -67,7 +74,7 @@ export default function Experience({ mode = 'guest' }) {
 
   useEffect(() => {
     setQuality(detectQuality());
-    startRealtime();
+    startRealtime().catch(() => {});
     try {
       const t = new URLSearchParams(location.search).get('leader');
       if (t) setLeaderToken(t);
@@ -86,6 +93,19 @@ export default function Experience({ mode = 'guest' }) {
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
+  }, []);
+
+  // things under the header (feed, quiz button, lyrics on phones) sit below its measured height,
+  // so they move down when the status line wraps on a narrow phone
+  useEffect(() => {
+    const hud = hudRef.current;
+    const main = mainRef.current;
+    if (!hud || !main || typeof ResizeObserver === 'undefined') return;
+    const set = () => main.style.setProperty('--hud-h', `${Math.ceil(hud.getBoundingClientRect().height)}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(hud);
+    return () => ro.disconnect();
   }, []);
 
   const mine = useMemo(() => logs.find((l) => l.device_id === deviceId) || null, [logs, deviceId]);
@@ -128,6 +148,7 @@ export default function Experience({ mode = 'guest' }) {
     .filter((l) => l.laid_at && (now - l.laid_at) / 1000 >= 0 && (now - l.laid_at) / 1000 < 9)
     .sort((a, b) => b.laid_at - a.laid_at)[0];
   const spotT = spot ? (now - spot.laid_at) / 1000 : 0;
+  const showCalling = !spot && !!calling && !(isLeader && myLeader?.slot === calling.slot);
 
   async function layHonour() {
     setLeaderBusy(true);
@@ -207,7 +228,7 @@ export default function Experience({ mode = 'guest' }) {
   const quizUrl = fire.quiz_on && mode !== 'stage' && /^https:\/\//i.test(fire.quiz_url || '') ? fire.quiz_url : null;
 
   return (
-    <main className={`stage ${hideUi ? 'ui-hidden' : ''} ${quizUrl ? 'quiz-on' : ''}`}>
+    <main ref={mainRef} className={`stage ${hideUi ? 'ui-hidden' : ''} ${quizUrl ? 'quiz-on' : ''} ${quality === 'low' ? 'lowfx' : ''}`}>
       <SceneGuard>{sceneEl}</SceneGuard>
       <div className={`curtain ${ready ? 'up' : ''}`} />
       <div className={`dim ${counting ? 'on' : ''} ${spot ? 'spot' : ''}`} />
@@ -222,7 +243,7 @@ export default function Experience({ mode = 'guest' }) {
         </div>
       )}
 
-      {!spot && calling && !(isLeader && myLeader?.slot === calling.slot) && (
+      {showCalling && (
         <div className="calling">
           The fire keeper calls <strong>{calling.name}</strong>
           {calling.title ? `, ${calling.title}` : ''}
@@ -249,7 +270,7 @@ export default function Experience({ mode = 'guest' }) {
           {myLeader.called_at && !myLeader.laid_at && (
             <>
               <p className="lede">You have been called. Everyone around the fire will watch your log being laid.</p>
-              <button className="btn place pulse" disabled={leaderBusy} onClick={layHonour}>
+              <button className="btn btn--cta xl wide pulse" disabled={leaderBusy} onClick={layHonour}>
                 {leaderBusy ? 'Laying it…' : 'Lay the honour log'}
               </button>
             </>
@@ -259,8 +280,8 @@ export default function Experience({ mode = 'guest' }) {
         </div>
       )}
 
-      <header className="hud-top">
-        <div>
+      <header className="hud-top" ref={hudRef}>
+        <div className="hud-main">
           <div className="eyebrow">{EVENT.org}</div>
           <h1 className="title">{EVENT.title}</h1>
           <div className="status">{status}</div>
@@ -270,11 +291,14 @@ export default function Experience({ mode = 'guest' }) {
           <div className="small">
             {logs.length === 1 ? 'log laid' : 'logs laid'} · {online} around the fire
           </div>
+          <button className="sound" onClick={toggleSound} aria-pressed={sound}>
+            {sound ? 'Sound on' : 'Sound off'}
+          </button>
         </div>
       </header>
 
       {quizUrl && (
-        <a className="quiz-btn" href={quizUrl} target="_blank" rel="noopener noreferrer">
+        <a className="btn btn--cta quiz-btn" href={quizUrl} target="_blank" rel="noopener noreferrer">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm1.6-6.4-.9.9c-.6.6-.7 1-.7 2h-2v-.5c0-1 .3-1.8 1-2.5l1.2-1.2a1.4 1.4 0 1 0-2.4-1H8.8a3.2 3.2 0 1 1 5.8 2.3z" />
           </svg>
@@ -304,7 +328,7 @@ export default function Experience({ mode = 'guest' }) {
           <label>
             <span>Your name</span>
             <input
-              autoFocus
+              autoFocus={!coarsePointer()}
               maxLength={MAX_NAME}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -351,7 +375,7 @@ export default function Experience({ mode = 'guest' }) {
           <div className="fine photo-fine">Your photo stays on this phone. It is only used on your keepsake.</div>
           {photoErr && <div className="error">{photoErr}</div>}
           {error && <div className="error">{error}</div>}
-          <button className="btn primary big pulse" type="submit">
+          <button className="btn btn--cta lg wide pulse" type="submit">
             Take your log
           </button>
           <div className="fine">Sound on for the full experience.</div>
@@ -366,7 +390,7 @@ export default function Experience({ mode = 'guest' }) {
             <span />
           </div>
           <div className="hint-text">Your log is ready. Tap the button below, or drag the log up into the fire.</div>
-          <button className="btn place pulse" disabled={busy} onClick={() => emit('throw-log')}>
+          <button className="btn btn--cta xl pulse" disabled={busy} onClick={() => emit('throw-log')}>
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
               <path
                 fill="currentColor"
@@ -394,9 +418,10 @@ export default function Experience({ mode = 'guest' }) {
             </div>
             <div className="mine-sub">Your log is in the fire — #{logs.indexOf(mine) + 1}</div>
             {photoErr && <div className="error">{photoErr}</div>}
+            {keepErr && <div className="error">{keepErr}</div>}
           </div>
           <div className="mine-actions">
-            <button className="btn ghost big-ish" onClick={() => emit('focus-mine')}>
+            <button className="btn ghost" onClick={() => emit('focus-mine')}>
               Find my log
             </button>
             {lit && (
@@ -405,8 +430,11 @@ export default function Experience({ mode = 'guest' }) {
                 disabled={keepBusy}
                 onClick={async () => {
                   setKeepBusy(true);
+                  setKeepErr('');
                   try {
                     await makeKeepsake(mine, logs.indexOf(mine) + 1, photo);
+                  } catch (err) {
+                    setKeepErr(err?.message || 'Could not make your keepsake. Please try again.');
                   } finally {
                     setKeepBusy(false);
                   }
@@ -433,11 +461,7 @@ export default function Experience({ mode = 'guest' }) {
         <button onClick={() => setZoom(shared.zoom * 1.25)} aria-label="Zoom out">−</button>
       </div>
 
-      <button className="sound" onClick={toggleSound} aria-label={sound ? 'Mute' : 'Turn sound on'}>
-        {sound ? 'Sound on' : 'Sound off'}
-      </button>
-
-      {demo && mode !== 'stage' && (
+      {demo && mode !== 'stage' && !showCalling && (
         <div className="demo-flag">Demo mode · syncs between tabs in this browser only</div>
       )}
 

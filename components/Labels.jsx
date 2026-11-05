@@ -94,7 +94,8 @@ function Label({ it }) {
   });
   return (
     <group ref={g} position={it.pos}>
-      <Html center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
+      {/* below the HUD (z 10) so name tags never cover buttons or text */}
+      <Html center zIndexRange={[9, 0]} style={{ pointerEvents: 'none' }}>
         <div ref={el} className={`tag tag-${it.kind}${it.mine ? ' tag-mine' : ''}`} style={{ opacity: 0 }}>
           <span className="tag-name">{it.name}</span>
           {it.message ? <span className="tag-msg">“{it.message}”</span> : null}

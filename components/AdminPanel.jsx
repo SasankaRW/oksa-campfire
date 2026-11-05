@@ -78,6 +78,15 @@ function CentrePhoto({ fire }) {
   );
 }
 
+// The request never got a clear answer (timeout, dropped connection, server hiccup).
+// The action may well have gone through, so we don't undo it on this screen.
+// lib/realtime.js may tag these with err.network; until then, fall back to its messages.
+function isNetworkError(e) {
+  if (!e) return false;
+  if (e.network === true || e.name === 'AbortError' || e instanceof TypeError) return true;
+  return /connection is slow|could not reach the server|server busy|failed to fetch|network/i.test(e.message || '');
+}
+
 function Spinner() {
   return <span className="spin" aria-hidden="true" />;
 }
@@ -155,7 +164,7 @@ export default function AdminPanel() {
   function say(text, kind = 'ok') {
     clearTimeout(toastTimer.current);
     setToast({ text, kind });
-    toastTimer.current = setTimeout(() => setToast(null), kind === 'err' ? 5000 : 1800);
+    toastTimer.current = setTimeout(() => setToast(null), kind === 'err' ? 5000 : kind === 'wait' ? 40000 : 1800);
   }
 
   // Runs an action: instant local feedback, spinner on the button, toast when done.
@@ -176,9 +185,23 @@ export default function AdminPanel() {
         } catch {}
       } else if (doneText) say(doneText);
     } catch (e) {
-      if (patch) useStore.getState().setFire(before);
-      say(e.message || 'That did not work. Try again.', 'err');
-      if (action === 'login') setAuthed(false);
+      if (action !== 'login' && isNetworkError(e)) {
+        // Keep what's on screen (the server ignores repeats) and ask the server for the
+        // real state: 'login' answers with the full fire and leaders, which replaces our guess.
+        say('Checking with the server…', 'wait');
+        adminAction(pass, 'login')
+          .then(() => {
+            const f = useStore.getState().fire;
+            const landed = !patch || Object.keys(patch).some((k) => f[k] !== before[k]);
+            if (landed) say(doneText || 'Up to date');
+            else say('That didn’t go through. Please try again.', 'err');
+          })
+          .catch(() => say('Still can’t reach the server. What you see may be out of date.', 'err'));
+      } else {
+        if (patch) useStore.getState().setFire(before);
+        say(e.message || 'That did not work. Try again.', 'err');
+        if (action === 'login') setAuthed(false);
+      }
     } finally {
       setPending((p) => {
         const n = { ...p };
@@ -257,7 +280,7 @@ export default function AdminPanel() {
         >
           <label>
             <span>Passcode{demo ? ' (demo: "demo")' : ''}</span>
-            <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoFocus />
+            <input type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} autoFocus />
           </label>
           <Btn busy={!!pending['login']} className="primary">
             Enter
@@ -277,9 +300,9 @@ export default function AdminPanel() {
             <div className={`chip ${fire.logs_open ? 'on' : ''}`}>{fire.logs_open ? 'Log placing open' : 'Log placing closed'}</div>
           </div>
 
-          <nav className="admin-tabs" role="tablist">
+          <nav className="admin-tabs" aria-label="Fire keeper sections">
             {TABS.map(([k, label]) => (
-              <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => pickTab(k)}>
+              <button key={k} aria-pressed={tab === k} onClick={() => pickTab(k)}>
                 {label}
               </button>
             ))}
@@ -345,7 +368,7 @@ export default function AdminPanel() {
                       </div>
                     )}
                     {custom && customBad && <p className="hint2 warnline">Pick a time up to {MAX_COUNTDOWN_SECONDS / 60} minutes.</p>}
-                    <Btn busy={!!pending['ignite']} className="fire big-act" disabled={custom && customBad}
+                    <Btn busy={!!pending['ignite']} className="btn--cta lg" disabled={custom && customBad}
                       onClick={() => run('ignite', { delay: chosenDelay }, 'ignite', 'Fire arrow drawn')}
                     >
                       {custom && !customBad ? `Shoot the fire arrow in ${formatCountdown(chosenDelay)}` : 'Shoot the fire arrow'}
@@ -423,7 +446,7 @@ export default function AdminPanel() {
 
                 <div className="card2">
                   <div className="card2-title">Three cheers</div>
-                  <input value={cheerText} onChange={(e) => setCheerText(e.target.value)} placeholder="Three cheers for… (optional)" />
+                  <input aria-label="Cheer words" value={cheerText} onChange={(e) => setCheerText(e.target.value)} placeholder="Three cheers for… (optional)" />
                   <Btn busy={!!pending['cheer']} className="primary-soft" onClick={() => run('cheer', { text: cheerText }, 'cheer', 'Cheers started')}>
                     Hip hip, hooray ×3
                   </Btn>
@@ -435,6 +458,7 @@ export default function AdminPanel() {
                   <input
                     type="url"
                     inputMode="url"
+                    aria-label="Kahoot quiz link"
                     value={quizUrl ?? ''}
                     onChange={(e) => setQuizUrl(e.target.value)}
                     placeholder="https://kahoot.it/?pin=…"
@@ -469,7 +493,7 @@ export default function AdminPanel() {
                         </Btn>
                       ))}
                       <p className="hint2">Or any other song (no lyrics):</p>
-                      <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Song name" />
+                      <input aria-label="Song name" value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Song name" />
                       <Btn busy={!!pending['song']} onClick={() => run('song_start', { title: songTitle }, 'song', 'Sing-along on')}>
                         Start sing-along
                       </Btn>
@@ -493,7 +517,7 @@ export default function AdminPanel() {
                 {leadersNamed.length > 0 && (
                   <>
                     <Btn busy={!!pending['callnext']}
-                      className="fire big-act"
+                      className="btn--cta lg"
                       disabled={!nextLeader}
                       onClick={() => nextLeader && run('leader_call', { slot: nextLeader.slot }, 'callnext', `Called ${nextLeader.name}`)}
                     >
@@ -513,7 +537,7 @@ export default function AdminPanel() {
                           </span>
                           <div className="lacts">
                             <button
-                              className="mini"
+                              className="btn mini"
                               onClick={() => {
                                 navigator.clipboard?.writeText(`${location.origin}/?leader=${l.token}`);
                                 setCopied(l.slot);
@@ -552,6 +576,7 @@ export default function AdminPanel() {
                   {(draft || [0, 1, 2, 3, 4].map(() => ({ name: '', title: '' }))).map((l, i) => (
                     <div className="lrow" key={i}>
                       <input
+                        aria-label={`Leader ${i + 1} name`}
                         placeholder={`Leader ${i + 1} name`}
                         value={l.name}
                         onChange={(e) => {
@@ -561,6 +586,7 @@ export default function AdminPanel() {
                         }}
                       />
                       <input
+                        aria-label={`Leader ${i + 1} title`}
                         placeholder="Title"
                         value={l.title}
                         onChange={(e) => {
@@ -582,7 +608,7 @@ export default function AdminPanel() {
             {/* ----------------------------- GUESTS ----------------------------- */}
             {tab === 'guests' && (
               <section>
-                <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search names" />
+                <input aria-label="Search guests by name" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search names" />
                 <ul className="admin-logs">
                   {shownLogs.map((l) => (
                     <li key={l.id}>
