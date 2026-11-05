@@ -34,7 +34,7 @@ In Vercel, open your project, go to **Settings → Environment Variables**, and 
 | `NEXT_PUBLIC_SUPABASE_URL` | the Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the anon / publishable key |
 | `SUPABASE_SERVICE_ROLE_KEY` | the service_role / secret key |
-| `ADMIN_PASSCODE` | a long random passcode for /admin (16+ characters) |
+| `ADMIN_PASSCODE` | the passcode for /admin |
 
 Then go to **Deployments**, click the **⋯** menu on the latest deployment and choose **Redeploy**. Environment variables only take effect after a redeploy.
 
@@ -55,7 +55,7 @@ To test on your own computer instead, create a file called `.env.local` in the p
 ## Before the event (checklist)
 - [ ] Run `supabase/migrations/2026-11-05-hardening.sql` in the SQL Editor (safe to re-run). Without it the site still works, but the log limit and passcode lockout are weaker.
 - [ ] Wake the project: a free project **pauses after 7 days with no activity**. Open the site and the Supabase dashboard the day before and on the day.
-- [ ] `ADMIN_PASSCODE` in Vercel is long and random (16+ characters), then redeploy. Five wrong tries from one address locks that address out for 10 minutes. If you lock yourself out, run `delete from public.rate_hits where key like 'admin:%';` in the SQL Editor (or, if you never ran the migration, redeploy), or just wait 10 minutes.
+- [ ] `ADMIN_PASSCODE` is set in Vercel. Five wrong tries from one address locks that address out for 10 minutes. If you lock yourself out, run `delete from public.rate_hits where key like 'admin:%';` in the SQL Editor (or, if you never ran the migration, redeploy), or just wait 10 minutes.
 - [ ] **Never** press *Reset everything* or *Add test logs* while guests are connected. Do your tests well before guests arrive, then reset once.
 - [ ] Check the shared cache works. Run this twice, a few seconds apart (the number is just a fixed moment in time, keep it as is):
 
