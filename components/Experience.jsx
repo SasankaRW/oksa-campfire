@@ -127,18 +127,6 @@ export default function Experience({ mode = 'guest' }) {
           ? EVENT.waiting
           : EVENT.waitingClosed;
   const isLeader = !!leaderToken && leaderMe && !leaderMe.error;
-  // signed in and still holding a log
-  const holding = mode === 'guest' && !leaderToken && ready && !!profile && !mine;
-  // the log in hand, the drag and the button only appear while the fire keeper has log placing open
-  const handActive = holding && !!fire.logs_open;
-
-  useEffect(() => {
-    if (!ready || !leaderToken) return;
-    leaderInfo(leaderToken)
-      .then((l) => setLeaderMe(l))
-      .catch((e) => setLeaderMe({ error: e.message }));
-  }, [ready, leaderToken]);
-
   // live status of this leader (called / laid) comes from the shared list
   const myLeader = isLeader ? leaders.find((l) => l.slot === leaderMe.slot) || leaderMe : null;
   // the leader currently being called (for everyone)
@@ -149,6 +137,26 @@ export default function Experience({ mode = 'guest' }) {
     .sort((a, b) => b.laid_at - a.laid_at)[0];
   const spotT = spot ? (now - spot.laid_at) / 1000 : 0;
   const showCalling = !spot && !!calling && !(isLeader && myLeader?.slot === calling.slot);
+  // once a leader's honour log is laid and their spotlight is over, they carry on like every other guest
+  const leaderDone = !!(isLeader && myLeader?.laid_at && !(spot && spot.slot === myLeader.slot));
+  const guestUi = mode === 'guest' && (!leaderToken || leaderDone);
+  // signed in and still holding a log
+  const holding = guestUi && ready && !!profile && !mine;
+  // the log in hand, the drag and the button only appear while the fire keeper has log placing open
+  const handActive = holding && !!fire.logs_open;
+
+  useEffect(() => {
+    if (!ready || !leaderToken) return;
+    leaderInfo(leaderToken)
+      .then((l) => setLeaderMe(l))
+      .catch((e) => setLeaderMe({ error: e.message }));
+  }, [ready, leaderToken]);
+
+  // a leader who joins as a guest afterwards starts with their name already filled in
+  const leaderName = leaderDone ? myLeader.name : '';
+  useEffect(() => {
+    if (leaderName) setForm((f) => (f.name ? f : { ...f, name: leaderName }));
+  }, [leaderName]);
 
   async function layHonour() {
     setLeaderBusy(true);
@@ -257,7 +265,7 @@ export default function Experience({ mode = 'guest' }) {
         </div>
       )}
 
-      {isLeader && myLeader && !(spot && spot.slot === myLeader.slot) && (
+      {isLeader && myLeader && !myLeader.laid_at && !(spot && spot.slot === myLeader.slot) && (
         <div className="card leader-card">
           <div className="eyebrow">Honour log</div>
           <h2>Welcome, {myLeader.name}</h2>
@@ -275,7 +283,6 @@ export default function Experience({ mode = 'guest' }) {
               </button>
             </>
           )}
-          {myLeader.laid_at && <p className="lede">Your honour log is in place at the heart of the fire. Thank you.</p>}
           {leaderMe?.note && <div className="error">{leaderMe.note}</div>}
         </div>
       )}
@@ -320,7 +327,7 @@ export default function Experience({ mode = 'guest' }) {
         </div>
       )}
 
-      {mode === 'guest' && !leaderToken && ready && !profile && (
+      {guestUi && ready && !profile && (
         <form className="card join" onSubmit={join}>
           <div className="eyebrow">{EVENT.year} · Virtual campfire</div>
           <h2>Take a log for the fire</h2>
@@ -409,7 +416,7 @@ export default function Experience({ mode = 'guest' }) {
         </div>
       )}
 
-      {mode === 'guest' && !leaderToken && mine && (
+      {guestUi && mine && (
         <div className="mine">
           <div>
             <div className="mine-name">
