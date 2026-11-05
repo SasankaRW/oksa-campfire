@@ -59,14 +59,15 @@ function findFfmpeg() {
   throw new Error('ffmpeg not found (run: npm i --no-save ffmpeg-static)');
 }
 
-// short, silent, small H.264 loop that plays on every phone
+// short, silent, small H.264 loop that plays on every phone (about 1 MB: it is
+// drawn into a 1024 px wide texture, so more pixels or bits would be wasted)
 async function clip(file) {
   const tmp = path.join(out, `.tmp-${process.pid}.mp4`);
   execFileSync(findFfmpeg(), [
     '-y', '-v', 'error', '-i', file, '-t', String(CLIP_SECONDS), '-an',
     '-vf', "scale='min(960,iw)':'min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,fps=30",
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '27', '-profile:v', 'main',
-    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', tmp,
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '30', '-maxrate', '420k', '-bufsize', '840k',
+    '-profile:v', 'main', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', tmp,
   ]);
   const buf = await fs.readFile(tmp);
   await fs.rm(tmp);
@@ -83,8 +84,9 @@ for (let i = 0; i < files.length; i++) {
       ? await clip(path.join(src, files[i]))
       : await sharp(path.join(src, files[i]))
           .rotate() // respect phone orientation
-          .resize(1280, 960, { fit: 'inside', withoutEnlargement: true })
-          .webp({ quality: 72 })
+          // the slideshow draws photos 1024 px wide (portrait ones up to 1280 tall)
+          .resize(1024, 1280, { fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 68 })
           .toBuffer();
     // content hash in the name lets browsers and the CDN cache each file forever
     const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 8);

@@ -35,6 +35,8 @@ class HeatHazeImpl extends Effect {
 }
 
 const v = new THREE.Vector3();
+const va = new THREE.Vector3();
+const vb = new THREE.Vector3();
 export const HeatHaze = forwardRef(function HeatHaze(_, ref) {
   const effect = useMemo(() => new HeatHazeImpl(), []);
   const { camera } = useThree();
@@ -45,8 +47,8 @@ export const HeatHaze = forwardRef(function HeatHaze(_, ref) {
     const c = effect.uniforms.get('uCenter').value;
     c.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5);
     // projected size of the flame column
-    const a = new THREE.Vector3(vol.radius, vol.top, 0).project(camera);
-    const b = new THREE.Vector3(0, vol.top * 2.2, 0).project(camera);
+    const a = va.set(vol.radius, vol.top, 0).project(camera);
+    const b = vb.set(0, vol.top * 2.2, 0).project(camera);
     effect.uniforms.get('uSize').value.set(Math.max(0.03, Math.abs(a.x - v.x) * 0.5 * 1.2), Math.max(0.05, Math.abs(b.y - v.y) * 0.5));
     effect.uniforms.get('uT').value = s.clock.elapsedTime;
     effect.uniforms.get('uAmt').value = I;

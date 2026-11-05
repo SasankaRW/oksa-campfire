@@ -249,8 +249,12 @@ export default function Logs() {
     const hl = highlight.current.until - now;
     logUniforms.uHighlightAmt.value = hl > 0 ? (0.5 + 0.5 * Math.sin(now * 5)) * Math.min(1, hl) : 0;
 
-    // expose for the fire system
-    shared.logState = { logs, n, map, getSlot, aIgn };
+    // expose for the fire system (one object, updated in place)
+    const ls = shared.logState || (shared.logState = { getSlot });
+    ls.logs = logs;
+    ls.n = n;
+    ls.map = map;
+    ls.aIgn = aIgn;
   });
 
   return (

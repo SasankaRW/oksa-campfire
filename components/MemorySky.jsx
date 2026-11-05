@@ -12,8 +12,18 @@ import { memoriesTime, rowTarget, loadManifest } from '@/lib/memories';
 
 const POOL = 10; // most photos on screen at once (the row is cut to fit)
 const DIST = 40; // how far in front of the camera the slideshow sits
-const KEEP = 14; // photo textures kept in memory
 const PHOTO_DEPTH = 62; // metres: the depth the photos are tested at (see below)
+// photo textures kept in memory, and their width; phones keep fewer, smaller ones
+// (never fewer than the row needs, see trimCache)
+const cfg = { keep: 14, W: 1024 };
+const VIDEO_TIMEOUT = 8000; // a clip that has not loaded by then counts as broken
+const PLAY_RETRY = 2000; // ms between attempts to start a paused clip
+
+// every slideshow material has a map from the start, so swapping photos in
+// never needs a new shader
+const BLANK = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
+BLANK.colorSpace = THREE.SRGBColorSpace;
+BLANK.needsUpdate = true;
 
 const mod = (i, n) => ((i % n) + n) % n;
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -35,18 +45,38 @@ function fetchPhoto(p) {
         return r.tex.dispose();
       }
       Object.assign(e, r, { ready: true });
+      if (r.video) watchFrames(e);
     })
     .catch(() => (e.failed = true)); // keep the entry so a broken photo is not requested again every frame
-  // forget the least recently used photos
-  if (cache.size > KEEP) {
-    const old = [...cache.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, cache.size - KEEP);
-    for (const [src, o] of old) {
-      o.tex?.dispose();
-      dropVideo(o.video);
-      cache.delete(src);
-    }
-  }
   return e;
+}
+
+// Forget the least recently used photos. Runs once a frame, after every photo the
+// row needs has been asked for, so a photo on screen is never the one dropped.
+function trimCache(need) {
+  const keep = Math.max(cfg.keep, need);
+  if (cache.size <= keep) return;
+  const old = [...cache.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, cache.size - keep);
+  for (const [src, o] of old) {
+    o.dropped = true;
+    o.tex?.dispose();
+    dropVideo(o.video);
+    cache.delete(src);
+  }
+}
+
+// Marks a clip's texture as stale whenever the video shows a new frame, where the
+// browser supports telling us (otherwise updateVideos checks ~30 times a second).
+function watchFrames(e) {
+  const el = e.video;
+  if (!el?.requestVideoFrameCallback) return;
+  const onFrame = () => {
+    if (e.dropped) return;
+    e.rvfc = true;
+    e.dirty = true;
+    el.requestVideoFrameCallback(onFrame);
+  };
+  el.requestVideoFrameCallback(onFrame);
 }
 
 // Minimal: the photo with rounded corners and one very thin light border.
@@ -75,12 +105,32 @@ async function loadVideo(src) {
   el.loop = true;
   el.preload = 'auto';
   el.src = src;
-  await new Promise((res, rej) => {
-    el.addEventListener('loadeddata', res, { once: true });
-    el.addEventListener('error', () => rej(new Error('video failed')), { once: true });
-    el.load();
-    el.play().catch(() => {}); // some phones only fetch the first frame once playing
-  });
+  try {
+    await new Promise((res, rej) => {
+      const timer = setTimeout(() => rej(new Error('video timed out')), VIDEO_TIMEOUT);
+      el.addEventListener(
+        'loadeddata',
+        () => {
+          clearTimeout(timer);
+          res();
+        },
+        { once: true },
+      );
+      el.addEventListener(
+        'error',
+        () => {
+          clearTimeout(timer);
+          rej(new Error('video failed'));
+        },
+        { once: true },
+      );
+      el.load();
+      el.play().catch(() => {}); // some phones only fetch the first frame once playing
+    });
+  } catch (err) {
+    dropVideo(el); // stop the download
+    throw err;
+  }
   el.pause();
   return el;
 }
@@ -112,9 +162,10 @@ async function compose({ src, caption, video }) {
       await document.fonts?.load('italic 40px "Cormorant Garamond"');
     } catch {}
   }
-  const W = 1024;
+  const W = cfg.W;
+  const k = W / 1024; // sizes below are for a 1024 px wide texture
   const P = 4; // a few clear pixels so the border edge stays smooth
-  const R = 28; // corner radius
+  const R = 28 * k; // corner radius
   const a = clamp(nw / nh, 0.8, 1.7);
   const pw = W - 2 * P;
   const ph = Math.round(pw / a);
@@ -140,15 +191,15 @@ async function compose({ src, caption, video }) {
     g.drawImage(img, sx, sy, sw, sh, P, P, pw, ph);
     if (caption) {
       // a dark fade at the bottom so the caption reads on any photo
-      const fade = g.createLinearGradient(0, P + ph, 0, P + ph - 170);
+      const fade = g.createLinearGradient(0, P + ph, 0, P + ph - 170 * k);
       fade.addColorStop(0, 'rgba(0,0,0,0.55)');
       fade.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = fade;
-      g.fillRect(P, P + ph - 170, pw, 170);
+      g.fillRect(P, P + ph - 170 * k, pw, 170 * k);
       g.fillStyle = 'rgba(255,245,230,0.95)';
-      g.font = 'italic 40px "Cormorant Garamond", Georgia, serif';
+      g.font = `italic ${Math.round(40 * k)}px "Cormorant Garamond", Georgia, serif`;
       g.textAlign = 'center';
-      g.fillText(caption, W / 2, P + ph - 50, pw - 120);
+      g.fillText(caption, W / 2, P + ph - 50 * k, pw - 120 * k);
     }
     g.restore();
 
@@ -162,28 +213,45 @@ async function compose({ src, caption, video }) {
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 1;
+  if (video) {
+    // redrawn many times a second: skip building mipmaps on every upload
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+  }
   // inner: the share of the texture's width the photo itself takes up
   return { tex, aspect: W / H, inner: pw / W, photo: pw / ph, video: video ? img : null, draw };
 }
 
 // Videos play only while they are on screen, and their frames are copied into the texture.
 function updateVideos(showing) {
+  const now = performance.now();
   for (const e of cache.values()) {
     const el = e.video;
     if (!el) continue;
     if (showing?.has(e)) {
-      if (el.paused) el.play().catch(() => {});
-      if (el.currentTime !== e.lastT) {
+      if (el.paused && !(now - (e.triedPlay || 0) < PLAY_RETRY)) {
+        e.triedPlay = now;
+        el.play().catch(() => {});
+      }
+      // a new video frame: told by the browser, or else checked at most 30 times a second
+      const fresh = e.rvfc ? e.dirty : el.currentTime !== e.lastT && now - (e.drawnAt || 0) >= 33;
+      if (fresh) {
+        e.dirty = false;
         e.lastT = el.currentTime;
+        e.drawnAt = now;
         e.draw();
         e.tex.needsUpdate = true;
       }
     } else if (!el.paused) el.pause();
   }
 }
+const showing = new Set(); // reused every frame
 
-export default function MemorySky() {
+export default function MemorySky({ quality = 'high' }) {
+  // phones: fewer, smaller photo textures
+  cfg.keep = quality === 'high' ? 14 : 8;
+  cfg.W = quality === 'high' ? 1024 : 768;
   const photos = useRef([]);
   const S = useRef({ k: 0, o: 0, f: 0, init: false });
   const geo = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
@@ -196,6 +264,7 @@ export default function MemorySky() {
           depthTest: true,
           depthWrite: false,
           opacity: 0,
+          map: BLANK,
         });
         // depth-tested as if PHOTO_DEPTH m away and drawn after the far landscape:
         // past the clearing (ground ends ~55 m) but before the nearest mountains
@@ -249,7 +318,7 @@ export default function MemorySky() {
     s.f += ((paused && t !== null ? 1 : 0) - s.f) * (1 - Math.exp(-dt * 2.6));
     shared.memK = s.k;
     if (s.k < 0.003 || !n) {
-      meshes.forEach((m) => (m.visible = false));
+      for (const m of meshes) m.visible = false;
       updateVideos(null);
       return;
     }
@@ -275,6 +344,7 @@ export default function MemorySky() {
 
     // warm up the next photos so they are ready before they slide in
     for (let i = base; i <= last + 2; i++) fetchPhoto(list[mod(i, n)]);
+    trimCache(last - base + 3 + 1); // the photos asked for above, and one to spare
 
     // how much the neighbours move aside to make room for the focused photo
     const ce = fetchPhoto(list[mod(Math.round(o), n)]);
@@ -282,8 +352,8 @@ export default function MemorySky() {
     const cfw = Math.min(focusW, focusH * ce.photo);
     const push = f * Math.max(0, (cfw - cpw) / 2 + slot * 0.05);
 
-    meshes.forEach((m) => (m.visible = false));
-    const showing = new Set();
+    for (const m of meshes) m.visible = false;
+    showing.clear();
     for (let i = base; i <= last; i++) {
       const m = meshes[mod(i, POOL)];
       const u = m.userData;
@@ -291,12 +361,9 @@ export default function MemorySky() {
       if (u.i !== i) {
         u.i = i;
         u.r = 0;
-        m.material.map = null;
+        m.material.map = BLANK;
       }
-      if (e.ready && m.material.map !== e.tex) {
-        m.material.map = e.tex;
-        m.material.needsUpdate = true;
-      }
+      if (e.ready && m.material.map !== e.tex) m.material.map = e.tex;
       u.r += ((e.ready ? 1 : 0) - u.r) * (1 - Math.exp(-dt * 4));
       const rel = i - o;
       const c = clamp(1 - Math.abs(rel), 0, 1); // 1 = this photo is in the middle

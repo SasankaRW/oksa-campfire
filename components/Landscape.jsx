@@ -14,10 +14,11 @@ const HAZE = new THREE.Color('#0d1424');
 const MIST = new THREE.Color('#1a2233');
 
 /* ------------------------------- sky ------------------------------- */
+// The Milky Way photo. Loads on its own; until then (or if it fails) the sky is the plain night colour.
 export function Sky() {
   const { scene } = useThree();
   const tex = useLoader(THREE.CubeTextureLoader, [
-    ['px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg'].map((f) => '/textures/sky/' + f),
+    ['px', 'nx', 'py', 'ny', 'pz', 'nz'].map((f) => '/textures/sky/' + f + '.webp'),
   ])[0];
   useEffect(() => {
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -28,8 +29,11 @@ export function Sky() {
       scene.background = null;
     };
   }, [tex, scene]);
+  return null;
+}
 
-  // faint moon-glow and horizon airglow over the photo sky
+// faint moon-glow and horizon airglow over the photo sky
+export function SkyGlow() {
   const glow = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -61,6 +65,16 @@ export function Sky() {
 export function Moon() {
   const tex = useLoader(THREE.TextureLoader, '/textures/moon.jpg');
   tex.colorSpace = THREE.SRGBColorSpace;
+  return <MoonBody map={tex} />;
+}
+// stand-in while the moon photo loads (or if it fails): its average colour
+export function MoonPlain() {
+  return <MoonBody map={null} />;
+}
+const MOON_TINT = [2.4, 2.35, 2.2];
+const MOON_PLAIN = MOON_TINT.map((c) => c * 0.275);
+
+function MoonBody({ map }) {
   const D = 6000;
   const pos = MOON_DIR.clone().multiplyScalar(D);
   const halo = useMemo(() => {
@@ -87,7 +101,7 @@ export function Moon() {
     <group position={pos}>
       <mesh rotation={[0, Math.PI * 0.8, 0.3]} renderOrder={-15}>
         <sphereGeometry args={[D * 0.0105, 48, 24]} />
-        <meshBasicMaterial map={tex} color={[2.4, 2.35, 2.2]} fog={false} toneMapped={false} />
+        <meshBasicMaterial map={map} color={map ? MOON_TINT : MOON_PLAIN} fog={false} toneMapped={false} />
       </mesh>
       <sprite scale={[D * 0.22, D * 0.22, 1]} renderOrder={-16}>
         <spriteMaterial ref={haloMat} map={halo} transparent depthWrite={false} fog={false} blending={THREE.AdditiveBlending} />
@@ -107,10 +121,11 @@ function terrainHeight(x, z) {
   return h;
 }
 
-export function Mountains() {
+export function Mountains({ low = false }) {
   const geo = useMemo(() => {
-    const R = 240;
-    const C = 420;
+    // phones: fewer rows and columns (the ridge line stays within a few pixels)
+    const R = low ? 160 : 240;
+    const C = low ? 280 : 420;
     const d0 = 70;
     const d1 = 7500;
     const a0 = -1.9;
@@ -128,16 +143,22 @@ export function Mountains() {
         pos[k++] = z;
       }
     }
-    const idx = [];
+    const idx = new Uint32Array(R * C * 6);
+    let q = 0;
     for (let i = 0; i < R; i++)
       for (let j = 0; j < C; j++) {
         const a = i * (C + 1) + j;
         const b = a + C + 1;
-        idx.push(a, a + 1, b, a + 1, b + 1, b);
+        idx[q++] = a;
+        idx[q++] = a + 1;
+        idx[q++] = b;
+        idx[q++] = a + 1;
+        idx[q++] = b + 1;
+        idx[q++] = b;
       }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setIndex(idx);
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.computeVertexNormals();
     // forest on gentle slopes, bare rock on steep ones
     const n = g.attributes.normal;
@@ -154,7 +175,7 @@ export function Mountains() {
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     return g;
-  }, []);
+  }, [low]);
 
   const mat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, fog: false });

@@ -6,6 +6,15 @@ import * as THREE from 'three';
 import { makeLogMaterial } from './logMaterial';
 import { shared, on } from '@/lib/bus';
 
+// scratch objects, so the frame loop does not allocate
+const FLY_TO = new THREE.Vector3(0, 1.2, 0);
+const tmpV = new THREE.Vector3();
+const tmpPos = new THREE.Vector3();
+const tmpQ = new THREE.Quaternion();
+const tmpE = new THREE.Euler();
+// what the pile reads to fly your log in from where it left your hand
+const handNow = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+
 export default function HandLog({ active, onThrow, seed = 7 }) {
   const ref = useRef();
   const { camera, gl, size } = useThree();
@@ -62,7 +71,9 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
     const s = st.current;
     if (s.thrown || !ref.current) return;
     s.thrown = performance.now();
-    shared.hand = { position: ref.current.position.clone(), quaternion: ref.current.quaternion.clone() };
+    handNow.position.copy(ref.current.position);
+    handNow.quaternion.copy(ref.current.quaternion);
+    shared.hand = handNow;
     onThrow?.();
   }
 
@@ -76,9 +87,10 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
 
   useFrame((_, dt) => {
     const g = ref.current;
-    // warm pulsing glow so the log is easy to spot
+    // warm pulsing glow so the log is easy to spot (a little stronger now that
+    // there is no separate lantern light on it)
     const tt = performance.now() / 1000;
-    mat.userData.single.uSelfGlow.value = st.current.thrown ? 0 : 0.05 + 0.09 * (0.5 + 0.5 * Math.sin(tt * 4.4));
+    mat.userData.single.uSelfGlow.value = st.current.thrown ? 0 : 0.07 + 0.1 * (0.5 + 0.5 * Math.sin(tt * 4.4));
     if (!g) return;
     const s = st.current;
     g.visible = active && (!s.thrown || shared.hand !== null);
@@ -87,24 +99,25 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
     if (s.thrown) {
       // keep flying toward the fire until the pile takes over
       const p = g.position;
-      const target = new THREE.Vector3(0, 1.2, 0);
-      p.lerp(target, 1 - Math.exp(-dt * 2.2));
+      p.lerp(FLY_TO, 1 - Math.exp(-dt * 2.2));
       p.y += dt * 0.6;
       g.rotateX(dt * 1.5);
-      shared.hand = { position: p.clone(), quaternion: g.quaternion.clone() };
+      handNow.position.copy(p);
+      handNow.quaternion.copy(g.quaternion);
+      shared.hand = handNow;
       return;
     }
     if (!s.drag) s.ndc.lerp(s.rest, 1 - Math.exp(-dt * 6));
     const appear = Math.min(1, (performance.now() - s.appear) / 900);
     const depth = 3.3;
-    const v = new THREE.Vector3(s.ndc.x, s.ndc.y - (1 - easeOut(appear)) * 0.6, 0.5).unproject(camera);
+    const v = tmpV.set(s.ndc.x, s.ndc.y - (1 - easeOut(appear)) * 0.6, 0.5).unproject(camera);
     const dir = v.sub(camera.position).normalize();
-    const pos = camera.position.clone().addScaledVector(dir, depth + Math.max(0, s.ndc.y + 0.44) * 1.6);
+    const pos = tmpPos.copy(camera.position).addScaledVector(dir, depth + Math.max(0, s.ndc.y + 0.44) * 1.6);
     pos.y += Math.sin(t * 1.6) * 0.012;
     g.position.copy(pos);
     // lie across the view, slight tilt, gentle sway
-    const q = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(0.35 + Math.sin(t * 0.9) * 0.04 + s.vel.y * 2, -0.25, Math.PI / 2 - 0.32 + Math.sin(t * 0.7) * 0.05 - s.vel.x * 3),
+    const q = tmpQ.setFromEuler(
+      tmpE.set(0.35 + Math.sin(t * 0.9) * 0.04 + s.vel.y * 2, -0.25, Math.PI / 2 - 0.32 + Math.sin(t * 0.7) * 0.05 - s.vel.x * 3),
     );
     q.premultiply(camera.quaternion);
     g.quaternion.slerp(q, 1 - Math.exp(-dt * 10));
@@ -135,20 +148,8 @@ export default function HandLog({ active, onThrow, seed = 7 }) {
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       </mesh>
-      {/* a soft lantern-like fill so your log is readable in the dark */}
-      <HandFill target={ref} active={active} />
     </group>
   );
-}
-
-function HandFill({ target, active }) {
-  const l = useRef();
-  useFrame(() => {
-    if (!l.current || !target.current) return;
-    l.current.intensity = active && target.current.visible ? 0.2 : 0;
-    l.current.position.copy(target.current.position).add(new THREE.Vector3(0.4, 0.5, 0.6));
-  });
-  return <pointLight ref={l} color="#c9b08a" intensity={0} distance={2.5} decay={2} />;
 }
 
 function easeOut(t) {

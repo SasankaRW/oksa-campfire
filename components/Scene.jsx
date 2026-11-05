@@ -1,7 +1,7 @@
 'use client';
 import { Suspense, useRef, useState } from 'react';
 import { PerformanceMonitor } from '@react-three/drei';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, invalidate } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette, Noise, ToneMapping } from '@react-three/postprocessing';
 import { ToneMappingMode, BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
@@ -70,6 +70,101 @@ function useZoomControls() {
       window.removeEventListener('pointercancel', up);
     };
   }, [gl]);
+}
+
+const camTarget = new THREE.Vector3();
+
+// Phones with 90/120 Hz screens would render the scene up to twice as often as
+// needed. Measures the screen's refresh once things have settled, and if it is fast,
+// asks for a new frame at most ~60 times a second (the Canvas runs on demand).
+function FrameCap() {
+  useEffect(() => {
+    let raf = 0;
+    let checkAt = 0;
+    let checks = 0;
+    let prev = 0;
+    let last = 0;
+    let cap = false;
+    let gaps = [];
+    const STEP = 1000 / 60;
+    const tick = (t) => {
+      // ask for the frame first, then wait for the next one, so a 60 Hz screen renders every frame
+      if (!cap) invalidate();
+      else if (t - last >= STEP - 2) {
+        last = Math.max(last + STEP, t - STEP); // steady 60 fps on 90 and 120 Hz screens
+        invalidate();
+      }
+      // measure the refresh after the busy first second (loading, shader compiles),
+      // going by the quicker frames, and look once more ~10 s later in case it was still busy
+      if (!checkAt) checkAt = t + 1000;
+      if (!cap && checks < 2 && t >= checkAt) {
+        if (prev && t - prev < 100) gaps.push(t - prev);
+        if (gaps.length === 30) {
+          gaps.sort((a, b) => a - b);
+          cap = gaps[7] < 12; // the 25th percentile
+          last = t;
+          gaps = [];
+          checks++;
+          checkAt = t + 10000;
+        }
+      }
+      prev = t;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return null;
+}
+
+// The keepsake photo: copies the finished frame (after the effects) right after it
+// is drawn, so the canvas does not need to keep its drawing buffer around.
+function Capture() {
+  const { gl } = useThree();
+  useEffect(() => {
+    shared.redraw = () => invalidate();
+    return () => (shared.redraw = null);
+  }, []);
+  useFrame(() => {
+    const req = shared.capture;
+    if (!req) return;
+    shared.capture = null;
+    try {
+      const src = gl.domElement;
+      const c = document.createElement('canvas');
+      c.width = src.width;
+      c.height = src.height;
+      c.getContext('2d').drawImage(src, 0, 0);
+      req.resolve(c);
+    } catch (e) {
+      req.reject(e);
+    }
+  }, 2); // after the EffectComposer (priority 1) has drawn to the screen
+  return null;
+}
+
+// Compiles every shader once at the start, so the big moments (the arrow, the
+// fireflies, the slideshow) do not stall the first time they appear.
+function Precompile() {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    // the scene is drawn into the effects' buffer, not straight to the screen, and
+    // shaders differ slightly between the two, so compile them for a buffer too
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+    const prev = gl.getRenderTarget();
+    let p;
+    try {
+      gl.setRenderTarget(rt);
+      p = gl.compileAsync(scene, camera);
+    } catch {
+    } finally {
+      gl.setRenderTarget(prev);
+    }
+    Promise.resolve(p)
+      .catch(() => {})
+      .finally(() => rt.dispose());
+  }, [gl, scene, camera]);
+  return null;
 }
 
 function CameraRig() {
@@ -148,7 +243,7 @@ function CameraRig() {
     const lz = look.current.z;
     look.current.x = lx * ca + lz * sa;
     look.current.z = -lx * sa + lz * ca;
-    camera.position.lerp(new THREE.Vector3(x * ca + dist * sa, y, -x * sa + dist * ca), 1 - Math.exp(-dt * speed));
+    camera.position.lerp(camTarget.set(x * ca + dist * sa, y, -x * sa + dist * ca), 1 - Math.exp(-dt * speed));
     camera.lookAt(look.current);
     if (roll && !shared.keepsake) camera.rotateZ(roll);
     const fov = portrait ? 60 : 42;
@@ -168,40 +263,52 @@ export default function Scene({ quality = 'high', handActive, onThrow, mySeed })
   const maxDpr = Math.min(native, hi ? 1.75 : 1.6);
   const minDpr = Math.min(native, hi ? 0.9 : 1);
   const [dpr, setDpr] = useState(maxDpr);
+  // phones that keep swinging between sharp and soft settle on a lighter fire
+  const [lite, setLite] = useState(false);
   // the keepsake temporarily renders at full sharpness
   shared.setSharp = (on) => {
     // phones get enough pixels for a crisp 1080px card, even on low-density screens
+    // (at most 2x: bigger canvases can make phones drop the 3D context)
     const short = Math.min(window.innerWidth, window.innerHeight) || 1000;
-    setDpr(on ? Math.min(3, Math.max(Math.min(native, 2), 1100 / short)) : maxDpr);
+    setDpr(on ? Math.min(2, Math.max(Math.min(native, 2), 1100 / short)) : maxDpr);
   };
   return (
     <Canvas
       flat
       shadows={false}
       dpr={dpr}
+      frameloop={hi ? 'always' : 'demand'}
       camera={{ position: [0, 2.55, 10.2], fov: 42, near: 0.15, far: 12000 }}
-      gl={{ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
+      gl={{ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false }}
       onCreated={({ gl, scene }) => {
         gl.setClearColor('#04060a');
         scene.fog = new THREE.FogExp2('#070a12', 0.018);
       }}
     >
+      {!hi && <FrameCap />}
       <PerformanceMonitor
         onDecline={() => setDpr((d) => Math.max(minDpr, d - 0.2))}
         onIncline={() => setDpr((d) => Math.min(maxDpr, d + 0.2))}
+        onFallback={() => {
+          if (hi) return;
+          setLite(true);
+          setDpr((d) => Math.max(Math.min(native, 0.85), Math.min(d, 1.2)));
+        }}
         flipflops={6}
       />
       <CameraRig />
+      <Capture />
       <Suspense fallback={null}>
-        <Surroundings />
-        <MemorySky />
+        <Surroundings quality={quality} />
+        <MemorySky quality={quality} />
         <Logs />
         <HonourLogs />
         <Fireflies />
         <Fire quality={quality} />
-        <FireVolume quality={quality} />
+        <FireVolume quality={lite ? 'lite' : quality} />
         <HandLog active={handActive} onThrow={onThrow} seed={mySeed} />
         <Labels embersOfNames={false} />
+        <Precompile />
       </Suspense>
       <EffectComposer multisampling={0} disableNormalPass>
         {hi ? <HeatHaze /> : <></>}

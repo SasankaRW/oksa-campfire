@@ -99,7 +99,7 @@ void main(){
 }`;
 
 const smokeFrag = /* glsl */ `
-uniform sampler2D uNoise; uniform float uTime;
+uniform sampler2D uNoise; uniform float uTime; uniform float uAlpha;
 varying vec2 vUv; varying float vAge; varying float vSeed; varying float vHeat;
 void main(){
   vec2 p = vUv * 2.0 - 1.0;
@@ -111,7 +111,7 @@ void main(){
   vec3 smoke = mix(vec3(0.22, 0.10, 0.045), vec3(0.04, 0.04, 0.045), smoothstep(0.0, 0.25, vAge));
   vec3 dust = vec3(0.16, 0.14, 0.12);
   vec3 c = mix(smoke, dust, vHeat);
-  float alpha = blob * fade * mix(0.13, 0.12, vHeat);
+  float alpha = blob * fade * mix(0.13, 0.12, vHeat) * uAlpha;
   gl_FragColor = vec4(c, alpha);
 }`;
 
@@ -218,13 +218,84 @@ function markDirty(g) {
 
 const NEVER = 1e9;
 const v3 = new THREE.Vector3();
+// scratch objects, so the frame loop does not allocate
+const UP = new THREE.Vector3(0, 1, 0);
+const ARROW_FROM = new THREE.Vector3(5.5, 9, 19);
+const ARROW_DOWN = new THREE.Vector3(0, -0.5, -1);
+const tmpA = new THREE.Vector3();
+const arrowP = new THREE.Vector3();
+const arrowD = new THREE.Vector3();
+const FIRE_LIGHT_POS = new THREE.Vector3(0, 0.25, 0);
+const FIRE_LIGHT_COL = new THREE.Color('#ff6a1f');
+const TORCH_LIGHT_COL = new THREE.Color('#ffa04a');
+const torchLightPos = new THREE.Vector3();
+
+// the flaming arrow's arc from the archer to the pile
+function arrowAt(out, u, C) {
+  out.copy(ARROW_FROM).lerp(C, u);
+  out.y += 3.2 * 4 * u * (1 - u);
+  return out;
+}
+
+function spawnSparkEarly(SP, p, dir) {
+  const i = take(SP);
+  if (i < 0) return;
+  const k = i * 3;
+  SP.pos[k] = p.x;
+  SP.pos[k + 1] = p.y;
+  SP.pos[k + 2] = p.z;
+  SP.vel[k] = -dir.x * 2 + (Math.random() - 0.5);
+  SP.vel[k + 1] = -dir.y * 2 + Math.random() * 0.5;
+  SP.vel[k + 2] = -dir.z * 2 + (Math.random() - 0.5);
+  SP.age[i] = 0;
+  SP.life[i] = 0.6 + Math.random() * 0.8;
+  SP.size[i] = 0.025 + Math.random() * 0.03;
+}
+function spawnTrail(FL, SP, p, dir) {
+  for (let q = 0; q < 6; q++) {
+    const i = take(FL);
+    if (i < 0) break;
+    const k = i * 3;
+    const back = Math.random() * 0.9;
+    FL.pos[k] = p.x - dir.x * back + (Math.random() - 0.5) * 0.05;
+    FL.pos[k + 1] = p.y - dir.y * back + (Math.random() - 0.5) * 0.05;
+    FL.pos[k + 2] = p.z - dir.z * back + (Math.random() - 0.5) * 0.05;
+    FL.vel[k] = -dir.x * 1.5;
+    FL.vel[k + 1] = 0.4 - dir.y * 1.5;
+    FL.vel[k + 2] = -dir.z * 1.5;
+    FL.age[i] = 0;
+    FL.life[i] = 0.25 + Math.random() * 0.25;
+    FL.size[i] = 0.24 + Math.random() * 0.18;
+    FL.heat[i] = 1.0;
+  }
+  for (let q = 0; q < 2; q++) spawnSparkEarly(SP, p, dir);
+}
+// returns false when the pool is full
+function spawnSpark(SP, cx, cy, cz, spreadR, power) {
+  const i = take(SP);
+  if (i < 0) return false;
+  const k = i * 3;
+  const a = Math.random() * Math.PI * 2;
+  const rr = Math.random() * spreadR;
+  SP.pos[k] = cx + Math.cos(a) * rr;
+  SP.pos[k + 1] = cy + Math.random() * 0.3;
+  SP.pos[k + 2] = cz + Math.sin(a) * rr;
+  SP.vel[k] = (Math.random() - 0.5) * 1.4 * power;
+  SP.vel[k + 1] = (1.6 + Math.random() * 2.8) * power;
+  SP.vel[k + 2] = (Math.random() - 0.5) * 1.4 * power;
+  SP.age[i] = 0;
+  SP.life[i] = 1.2 + Math.random() * 2.6;
+  SP.size[i] = 0.018 + Math.random() * 0.03;
+  return true;
+}
 
 export default function Fire({ quality = 'high' }) {
   const { size, gl } = useThree();
   const tex = useMemo(() => noiseTexture(), []);
   const hi = quality === 'high';
-  const FL = useMemo(() => makePool(hi ? 1700 : 800), [hi]);
-  const SM = useMemo(() => makePool(220), []);
+  // phones: fewer but larger, brighter flames and less (but denser) smoke, for a similar look
+  const FL = useMemo(() => makePool(hi ? 1700 : 560), [hi]);
+  const SM = useMemo(() => makePool(hi ? 220 : 110), [hi]);
   const SP = useMemo(() => makePool(hi ? 700 : 400), [hi]);
 
   const flameGeo = useMemo(() => quadGeometry(FL), [FL]);
@@ -255,11 +326,11 @@ export default function Fire({ quality = 'high' }) {
       new THREE.ShaderMaterial({
         vertexShader: smokeVert,
         fragmentShader: smokeFrag,
-        uniforms: { uNoise: { value: tex }, uTime: { value: 0 } },
+        uniforms: { uNoise: { value: tex }, uTime: { value: 0 }, uAlpha: { value: hi ? 1 : 1.4 } },
         transparent: true,
         depthWrite: false,
       }),
-    [tex],
+    [tex, hi],
   );
   const sparkMat = useMemo(
     () =>
@@ -289,9 +360,19 @@ export default function Fire({ quality = 'high' }) {
 
   const light1 = useRef();
   const light2 = useRef();
-  const torchLight = useRef();
   const torch = useRef();
-  const state = useRef({ I: 0, last: sceneNow(), strikeFor: null, whooshFor: null, stokeSeen: null, bursts: [] });
+  const state = useRef({
+    I: 0,
+    last: sceneNow(),
+    strikeFor: null,
+    whooshFor: null,
+    stokeSeen: null,
+    bursts: [],
+    burning: [],
+    honourBurning: [],
+    tv: { radius: 0, top: 0, cx: 0, cz: 0 },
+    C: new THREE.Vector3(),
+  });
 
   // queued bursts from events
   useEffect(() => {
@@ -335,7 +416,8 @@ export default function Fire({ quality = 'high' }) {
 
     /* ------- which logs are burning ------- */
     const ls = shared.logState;
-    const burning = [];
+    const burning = S.burning;
+    burning.length = 0;
     let maxRing = 0;
     if (ls && lit) {
       for (let i = 0; i < ls.n; i++) {
@@ -346,43 +428,10 @@ export default function Fire({ quality = 'high' }) {
         }
       }
     }
-    const honourBurning = lit ? (shared.honour || []).filter((h) => h.ign <= now) : [];
-    const kindlingLit = lit && now - ig > 0;
+    const honourBurning = S.honourBurning;
+    honourBurning.length = 0;
+    if (lit && shared.honour) for (const h of shared.honour) if (h.ign <= now) honourBurning.push(h);
     const sinceIg = now - ig;
-
-    const spawnSparkEarly = (p, dir) => {
-      const i = take(SP);
-      if (i < 0) return;
-      const k = i * 3;
-      SP.pos[k] = p.x;
-      SP.pos[k + 1] = p.y;
-      SP.pos[k + 2] = p.z;
-      SP.vel[k] = -dir.x * 2 + (Math.random() - 0.5);
-      SP.vel[k + 1] = -dir.y * 2 + Math.random() * 0.5;
-      SP.vel[k + 2] = -dir.z * 2 + (Math.random() - 0.5);
-      SP.age[i] = 0;
-      SP.life[i] = 0.6 + Math.random() * 0.8;
-      SP.size[i] = 0.025 + Math.random() * 0.03;
-    };
-    const spawnTrail = (p, dir) => {
-      for (let q = 0; q < 6; q++) {
-        const i = take(FL);
-        if (i < 0) break;
-        const k = i * 3;
-        const back = Math.random() * 0.9;
-        FL.pos[k] = p.x - dir.x * back + (Math.random() - 0.5) * 0.05;
-        FL.pos[k + 1] = p.y - dir.y * back + (Math.random() - 0.5) * 0.05;
-        FL.pos[k + 2] = p.z - dir.z * back + (Math.random() - 0.5) * 0.05;
-        FL.vel[k] = -dir.x * 1.5;
-        FL.vel[k + 1] = 0.4 - dir.y * 1.5;
-        FL.vel[k + 2] = -dir.z * 1.5;
-        FL.age[i] = 0;
-        FL.life[i] = 0.25 + Math.random() * 0.25;
-        FL.size[i] = 0.24 + Math.random() * 0.18;
-        FL.heat[i] = 1.0;
-      }
-      for (let q = 0; q < 2; q++) spawnSparkEarly(p, dir);
-    };
 
     /* ------- intensity ------- */
     let target = 0;
@@ -453,32 +502,25 @@ export default function Fire({ quality = 'high' }) {
     const torchOn = now >= tStart && now <= tEnd && sinceIg < 8;
     const tip = v3;
     const R = pileRadius(ls ? ls.n : 0);
-    const C = new THREE.Vector3(0.1, 0.32 + Math.min(R, 1.2) * 0.25, Math.max(0.2, R - 0.05));
-    if (f.ignite_at) S.touch = C;
+    const C = S.C.set(0.1, 0.32 + Math.min(R, 1.2) * 0.25, Math.max(0.2, R - 0.05));
+    if (f.ignite_at) (S.touch || (S.touch = new THREE.Vector3())).copy(C);
     if (torch.current) {
       torch.current.visible = torchOn;
       if (torchOn) {
-        const P0 = new THREE.Vector3(5.5, 9, 19);
-        const arc = 3.2;
-        const posAt = (u) => {
-          const p = P0.clone().lerp(C, u);
-          p.y += arc * 4 * u * (1 - u);
-          return p;
-        };
         let p;
         let dir;
         if (now < ig) {
           const u = Math.max(0, (now - tStart) / FLIGHT);
-          p = posAt(u);
-          dir = posAt(Math.min(1, u + 0.01)).sub(posAt(Math.max(0, u - 0.01))).normalize();
-          S.arrowDir = dir.clone();
+          p = arrowAt(arrowP, u, C);
+          dir = arrowAt(arrowD, Math.min(1, u + 0.01), C).sub(arrowAt(tmpA, Math.max(0, u - 0.01), C)).normalize();
+          (S.arrowDir || (S.arrowDir = new THREE.Vector3())).copy(dir);
           // flame and spark trail
-          if (Math.random() < 0.8) spawnTrail(p, dir);
+          if (Math.random() < 0.8) spawnTrail(FL, SP, p, dir);
         } else {
           // stuck in the pile, quivering, then burnt away
           const t = now - ig;
-          p = C.clone().addScaledVector(S.arrowDir || new THREE.Vector3(0, -0.5, -1), 0.12);
-          dir = (S.arrowDir || new THREE.Vector3(0, -0.5, -1)).clone();
+          p = arrowP.copy(C).addScaledVector(S.arrowDir || ARROW_DOWN, 0.12);
+          dir = arrowD.copy(S.arrowDir || ARROW_DOWN);
           const q = Math.sin(t * 40) * Math.exp(-t * 6) * 0.06;
           dir.x += q;
           dir.normalize();
@@ -487,7 +529,7 @@ export default function Fire({ quality = 'high' }) {
         }
         if (now < ig) torch.current.scale.setScalar(1.8);
         torch.current.position.copy(p);
-        torch.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        torch.current.quaternion.setFromUnitVectors(UP, dir);
         tip.copy(p).addScaledVector(dir, -0.16);
       }
     }
@@ -521,10 +563,18 @@ export default function Fire({ quality = 'high' }) {
         0.08 * Math.cos(now * 4.3),
       );
     }
-    if (light2.current) light2.current.intensity = I * 9 * (0.9 + 0.1 * Math.sin(now * 17.3 + 2));
-    if (torchLight.current) {
-      torchLight.current.intensity = torchOn ? 5 * (0.85 + 0.15 * Math.sin(now * 21)) * Math.min(1, torch.current ? torch.current.scale.x : 1) : 0;
-      if (torchOn) torchLight.current.position.copy(tip).add(new THREE.Vector3(0, 0.25, 0));
+    if (light2.current) {
+      // the low fire light also carries the arrow's flame: while the arrow flies it
+      // follows the arrow, and it slides back into the fire as the fire takes over
+      // (one light fewer for every lit surface to add up)
+      const L = light2.current;
+      const fireI = I * 9 * (0.9 + 0.1 * Math.sin(now * 17.3 + 2));
+      const torchI = torchOn ? 5 * (0.85 + 0.15 * Math.sin(now * 21)) * Math.min(1, torch.current ? torch.current.scale.x : 1) : 0;
+      const w = torchI > 0 ? torchI / (fireI + torchI) : 0;
+      L.intensity = fireI + torchI;
+      if (w > 0) torchLightPos.copy(tip).y += 0.25;
+      L.position.lerpVectors(FIRE_LIGHT_POS, torchLightPos, w);
+      L.color.lerpColors(FIRE_LIGHT_COL, TORCH_LIGHT_COL, w);
     }
 
     // ember bed heats up over the first minute
@@ -535,14 +585,23 @@ export default function Fire({ quality = 'high' }) {
 
     /* ------- spawn flames ------- */
     let rate = 0;
-    if (lit) rate = I * (hi ? 620 : 300) * (1 + maxRing * 0.1);
+    if (lit) rate = I * (hi ? 620 : 210) * (1 + maxRing * 0.1);
     S.flAcc = (S.flAcc || 0) + rate * dt;
     const spread = 0.3 + maxRing * 0.07;
-    flameMat.uniforms.uBright.value = 0.22 / (1 + maxRing * 0.07);
+    flameMat.uniforms.uBright.value = (0.22 / (1 + maxRing * 0.07)) * (hi ? 1 : 1.3);
     {
-      const tv = burning.length || honourBurning.length
-        ? { radius: Math.max(0.3 + maxRing * 0.13, honourBurning.length ? 0.6 : 0), top: Math.max(1.0 + 0.11 * maxRing, honourBurning.length ? 1.9 : 0), cx: 0, cz: 0 }
-        : { radius: 0.22, top: 0.55, cx: S.touch ? S.touch.x : 0, cz: S.touch ? S.touch.z : 0 };
+      const tv = S.tv;
+      if (burning.length || honourBurning.length) {
+        tv.radius = Math.max(0.3 + maxRing * 0.13, honourBurning.length ? 0.6 : 0);
+        tv.top = Math.max(1.0 + 0.11 * maxRing, honourBurning.length ? 1.9 : 0);
+        tv.cx = 0;
+        tv.cz = 0;
+      } else {
+        tv.radius = 0.22;
+        tv.top = 0.55;
+        tv.cx = S.touch ? S.touch.x : 0;
+        tv.cz = S.touch ? S.touch.z : 0;
+      }
       const v = (shared.volume = shared.volume || { ...tv });
       const k = 1 - Math.exp(-dt * 1.2);
       v.radius += (tv.radius - v.radius) * k;
@@ -607,7 +666,7 @@ export default function Fire({ quality = 'high' }) {
       FL.vel[k + 2] = (Math.random() - 0.5) * 0.25;
       FL.age[i] = 0;
       FL.life[i] = (0.45 + Math.random() * 0.5) * (0.8 + I * 0.45);
-      FL.size[i] = sz * (0.75 + I * 0.55);
+      FL.size[i] = sz * (0.75 + I * 0.55) * (hi ? 1 : 1.12);
       FL.heat[i] = 0.75 + Math.random() * 0.35;
     }
     // torch flames
@@ -649,28 +708,15 @@ export default function Fire({ quality = 'high' }) {
     markDirty(flameGeo);
 
     /* ------- sparks ------- */
-    const spawnSpark = (cx, cy, cz, spreadR, power) => {
-      const i = take(SP);
-      if (i < 0) return;
-      const k = i * 3;
-      const a = Math.random() * Math.PI * 2;
-      const rr = Math.random() * spreadR;
-      SP.pos[k] = cx + Math.cos(a) * rr;
-      SP.pos[k + 1] = cy + Math.random() * 0.3;
-      SP.pos[k + 2] = cz + Math.sin(a) * rr;
-      SP.vel[k] = (Math.random() - 0.5) * 1.4 * power;
-      SP.vel[k + 1] = (1.6 + Math.random() * 2.8) * power;
-      SP.vel[k + 2] = (Math.random() - 0.5) * 1.4 * power;
-      SP.age[i] = 0;
-      SP.life[i] = 1.2 + Math.random() * 2.6;
-      SP.size[i] = 0.018 + Math.random() * 0.03;
-    };
     S.spAcc = (S.spAcc || 0) + (lit ? 8 + 45 * I : 0) * dt;
     while (S.spAcc >= 1) {
       S.spAcc -= 1;
-      spawnSpark(0, 0.5 + I * 0.5, 0, spread * 0.6, 0.8 + I * 0.4);
+      if (!spawnSpark(SP, 0, 0.5 + I * 0.5, 0, spread * 0.6, 0.8 + I * 0.4)) {
+        S.spAcc %= 1; // pool full: drop the rest, as before
+        break;
+      }
     }
-    if (torchOn && Math.random() < 0.6) spawnSpark(tip.x, tip.y, tip.z, 0.03, 0.4);
+    if (torchOn && Math.random() < 0.6) spawnSpark(SP, tip.x, tip.y, tip.z, 0.03, 0.4);
     for (let i = 0; i < SP.n; i++) {
       if (SP.age[i] >= 1) continue;
       SP.age[i] += dt / SP.life[i];
@@ -689,7 +735,7 @@ export default function Fire({ quality = 'high' }) {
     }
 
     /* ------- smoke ------- */
-    S.smAcc = (S.smAcc || 0) + (lit ? 6 + 22 * I : 0) * dt;
+    S.smAcc = (S.smAcc || 0) + (lit ? 6 + 22 * I : 0) * (hi ? 1 : 0.5) * dt;
     while (S.smAcc >= 1) {
       S.smAcc -= 1;
       const i = take(SM);
@@ -727,11 +773,20 @@ export default function Fire({ quality = 'high' }) {
           SM.heat[i] = 1;
         }
       } else if (b.type === 'sparks') {
-        for (let q = 0; q < b.n; q++) spawnSpark(b.at.x, b.at.y, b.at.z, 0.35, 1.25);
+        for (let q = 0; q < b.n; q++) if (!spawnSpark(SP, b.at.x, b.at.y, b.at.z, 0.35, 1.25)) break;
       }
       b.flare = b.flare ? b.flare * 0.9 : 0;
     }
-    S.bursts = S.bursts.filter((b) => b.flare > 0.01).map((b) => ({ ...b, n: 0, type: 'flare' }));
+    // keep only the still-flaring bursts (in place, no new arrays)
+    let nb = 0;
+    for (const b of S.bursts) {
+      if (b.flare > 0.01) {
+        b.n = 0;
+        b.type = 'flare';
+        S.bursts[nb++] = b;
+      }
+    }
+    S.bursts.length = nb;
 
     for (let i = 0; i < SM.n; i++) {
       if (SM.age[i] >= 1) continue;
@@ -771,7 +826,6 @@ export default function Fire({ quality = 'high' }) {
         shadow-camera-far={40}
       />
       <pointLight ref={light2} color="#ff6a1f" position={[0, 0.25, 0]} intensity={0} decay={1.8} />
-      <pointLight ref={torchLight} color="#ffa04a" intensity={0} decay={1.8} />
 
       <mesh rotation-x={-Math.PI / 2} position-y={0.012} material={emberMat} renderOrder={1}>
         <circleGeometry args={[2.8, 64]} />

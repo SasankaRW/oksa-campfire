@@ -15,6 +15,15 @@ export const SPOT_LEN = 9; // seconds the spotlight lasts
 const LAND_AT = 5.2; // seconds into the spotlight when the log settles
 const NEVER = 1e9;
 const up = new THREE.Vector3(0, 1, 0);
+// scratch objects, so the frame loop does not allocate
+const DROP_FROM = new THREE.Vector3(0.8, 4.2, 2.4);
+const axisX = new THREE.Vector3(1, 0, 0);
+const tmpFrom = new THREE.Vector3();
+const tmpSpin = new THREE.Quaternion();
+const leaderAt = (leaders, slot) => {
+  for (const l of leaders) if (l.slot === slot) return l;
+  return undefined;
+};
 
 // Five poles on a pentagon, meeting (and crossing) above the pile.
 export const POLES = (() => {
@@ -100,7 +109,8 @@ export default function HonourLogs() {
     return { g, m, pos, vel, age, life, cur: 0 };
   }, []);
 
-  const st = useRef({ landedFor: {}, drummedFor: {} });
+  // what the fire reads each frame: the poles that are in place, with their ignite time
+  const st = useRef({ landedFor: {}, drummedFor: {}, honour: [], entries: POLES.map((p) => ({ ...p, ign: NEVER })) });
 
   useFrame((state, dtRaw) => {
     const dt = Math.min(dtRaw, 1 / 20);
@@ -108,18 +118,20 @@ export default function HonourLogs() {
     const s = useStore.getState();
     const ig = s.fire.ignite_at ? toScene(s.fire.ignite_at) : NEVER;
     ember.m.uniforms.uPx.value = state.gl.getPixelRatio() * (state.size.height / 800);
-    const honour = [];
+    const honour = st.current.honour;
+    honour.length = 0;
     let spot = null;
     let laidCount = 0;
 
-    POLES.forEach((p, i) => {
+    for (let i = 0; i < POLES.length; i++) {
+      const p = POLES[i];
       const g = groups.current[i];
-      if (!g) return;
-      const L = s.leaders.find((l) => l.slot === i);
+      if (!g) continue;
+      const L = leaderAt(s.leaders, i);
       const laid = L && L.laid_at ? toScene(L.laid_at) : null;
       if (laid === null) {
         g.visible = false;
-        return;
+        continue;
       }
       const t = now - laid;
       if (t >= 0 && t < SPOT_LEN) spot = { slot: i, t, name: L.name, title: L.title };
@@ -128,9 +140,9 @@ export default function HonourLogs() {
       if (t >= 0 && t < LAND_AT) {
         const u = Math.max(0, (t - 0.8) / (LAND_AT - 0.8));
         const e = 1 - Math.pow(1 - u, 3);
-        const from = p.center.clone().add(new THREE.Vector3(0.8, 4.2, 2.4));
+        const from = tmpFrom.copy(p.center).add(DROP_FROM);
         g.position.lerpVectors(from, p.center, e);
-        const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), (1 - e) * 1.2);
+        const spin = tmpSpin.setFromAxisAngle(axisX, (1 - e) * 1.2);
         g.quaternion.copy(p.quat).multiply(spin);
         if (u > 0) for (let k = 0; k < 3; k++) spawn(ember, g.position, 0.6);
         if (!st.current.drummedFor[L.laid_at]) {
@@ -154,8 +166,12 @@ export default function HonourLogs() {
       // a soft golden glow while the spotlight is on it
       const glow = t >= 0 && t < SPOT_LEN ? Math.sin(Math.min(1, t / SPOT_LEN) * Math.PI) * 0.22 : 0;
       mats[i].userData.single.uSelfGlow.value = glow;
-      if (t >= LAND_AT || t < 0) honour.push({ ...p, ign });
-    });
+      if (t >= LAND_AT || t < 0) {
+        const h = st.current.entries[i];
+        h.ign = ign;
+        honour.push(h);
+      }
+    }
 
     if (lashing.current) lashing.current.visible = laidCount === 5;
     shared.honour = honour;

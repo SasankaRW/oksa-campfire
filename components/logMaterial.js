@@ -69,26 +69,6 @@ export function makeLogMaterial({ instanced = true } = {}) {
         float circ = ang * vRad;           // arc length around the log (metres)
         bool cap = abs(vLocalN.y) > 0.5;
         vec2 sp = vec2(cos(ang), sin(ang));
-        float streak = fbm3(vec3(sp*2.0*(vRad*20.0), along*3.0 + vSeed));
-        float groove = fbm3(vec3(sp*(vRad*90.0) + streak*1.5, along*0.9 + vSeed*1.7));
-        float fiss = smoothstep(0.42, 0.58, groove);
-        vec3 bark = mix(vec3(0.075,0.055,0.04), vec3(0.30,0.22,0.15), fiss*0.75 + streak*0.35);
-        bark = mix(bark, vec3(0.34,0.33,0.28), smoothstep(0.62,0.75, fbm3(vec3(sp*6.0, along*2.0 + vSeed*3.0)))*0.35);
-        if (uBirch > 0.5) {
-          // pale birch bark with dark horizontal lenticels and patches
-          float lent = smoothstep(0.62, 0.7, fbm3(vec3(sp*vRad*5.0, along*26.0 + vSeed)));
-          float patchy = smoothstep(0.58, 0.78, fbm3(vec3(sp*vRad*3.0, along*2.5 + vSeed*2.0)));
-          vec3 birch = mix(vec3(0.80,0.77,0.70), vec3(0.58,0.54,0.47), fbm3(vec3(sp*vRad*12.0, along*6.0)));
-          bark = mix(birch, vec3(0.07,0.06,0.05), max(lent, patchy*0.75));
-        }
-        if (cap) {
-          float r = length(vLocal.xz);
-          float rn = fbm3(vec3(vLocal.xz*4.0, vSeed));
-          float rings = sin((r + rn*0.08)*34.0)*0.5+0.5;
-          vec3 wood = mix(vec3(0.26,0.18,0.11), vec3(0.45,0.34,0.22), rings*0.6 + rn*0.4);
-          wood *= 1.0 - smoothstep(0.0, 0.08, 0.12 - abs(fbm3(vec3(vLocal.xz*6.0, vSeed+5.0))-0.5))*0.0;
-          bark = mix(wood, bark, smoothstep(0.84, 0.93, r));
-        }
         // ---- burning ----
         float bt = uTime - vIgn;
         gBurn = clamp(bt / 45.0, 0.0, 1.0);
@@ -103,6 +83,29 @@ export function makeLogMaterial({ instanced = true } = {}) {
         vec3 charC = mix(vec3(0.016,0.014,0.012), vec3(0.075,0.07,0.065), smoothstep(0.5,0.8, fbm3(q*1.7)));
         vec3 ash = vec3(0.30,0.29,0.27);
         charC = mix(charC, ash, smoothstep(0.7, 1.0, gBurn) * smoothstep(0.55,0.75, fbm3(q*0.8 + 7.0)) * 0.55);
+        // ---- bark (not needed once the wood is fully charred) ----
+        vec3 bark = vec3(0.0);
+        if (gChar < 0.999) {
+          float streak = fbm3(vec3(sp*2.0*(vRad*20.0), along*3.0 + vSeed));
+          float groove = fbm3(vec3(sp*(vRad*90.0) + streak*1.5, along*0.9 + vSeed*1.7));
+          float fiss = smoothstep(0.42, 0.58, groove);
+          bark = mix(vec3(0.075,0.055,0.04), vec3(0.30,0.22,0.15), fiss*0.75 + streak*0.35);
+          bark = mix(bark, vec3(0.34,0.33,0.28), smoothstep(0.62,0.75, fbm3(vec3(sp*6.0, along*2.0 + vSeed*3.0)))*0.35);
+          if (uBirch > 0.5) {
+            // pale birch bark with dark horizontal lenticels and patches
+            float lent = smoothstep(0.62, 0.7, fbm3(vec3(sp*vRad*5.0, along*26.0 + vSeed)));
+            float patchy = smoothstep(0.58, 0.78, fbm3(vec3(sp*vRad*3.0, along*2.5 + vSeed*2.0)));
+            vec3 birch = mix(vec3(0.80,0.77,0.70), vec3(0.58,0.54,0.47), fbm3(vec3(sp*vRad*12.0, along*6.0)));
+            bark = mix(birch, vec3(0.07,0.06,0.05), max(lent, patchy*0.75));
+          }
+          if (cap) {
+            float r = length(vLocal.xz);
+            float rn = fbm3(vec3(vLocal.xz*4.0, vSeed));
+            float rings = sin((r + rn*0.08)*34.0)*0.5+0.5;
+            vec3 wood = mix(vec3(0.26,0.18,0.11), vec3(0.45,0.34,0.22), rings*0.6 + rn*0.4);
+            bark = mix(wood, bark, smoothstep(0.84, 0.93, r));
+          }
+        }
         diffuseColor.rgb = mix(bark, charC, gChar);
         // glowing alligator cracks and ember patches, strongest inside the pile
         float cr = fbm3(q);

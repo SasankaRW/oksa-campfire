@@ -1,9 +1,9 @@
 'use client';
-import { useMemo, useRef, useLayoutEffect } from 'react';
+import { Component, Suspense, useMemo, useRef, useLayoutEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { fbm } from '@/lib/noise';
-import { Sky, Moon, Mountains, CloudSea, VillageLights, MOON_DIR } from './Landscape';
+import { Sky, SkyGlow, Moon, MoonPlain, Mountains, CloudSea, VillageLights, MOON_DIR } from './Landscape';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { shared } from '@/lib/bus';
 import { NOISE } from '@/lib/glsl';
@@ -27,28 +27,46 @@ export function groundHeight(x, z) {
 }
 export const CLIFF_Z = -8.5;
 
-function Ground() {
-  const grass = useLoader(THREE.TextureLoader, '/textures/grass.jpg');
-  const geo = useMemo(() => {
-    const g = new THREE.PlaneGeometry(130, 110, 260, 220);
-    g.rotateX(-Math.PI / 2);
-    g.translate(0, 0, 10);
-    const p = g.attributes.position;
-    const uv = g.attributes.uv;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i);
-      const z = p.getZ(i);
-      p.setY(i, groundHeight(x, z));
-      uv.setXY(i, x / 3.5, z / 3.5);
-    }
-    g.computeVertexNormals();
-    return g;
-  }, []);
+// built once and shared by the textured ground and its plain stand-in
+const groundGeos = {};
+function groundGeometry(low) {
+  if (groundGeos[low]) return groundGeos[low];
+  // phones: a coarser grid (the cliff edge moves by under 3 px; rocks and trees still sit on it)
+  const g = low ? new THREE.PlaneGeometry(130, 110, 160, 135) : new THREE.PlaneGeometry(130, 110, 260, 220);
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, 0, 10);
+  const p = g.attributes.position;
+  const uv = g.attributes.uv;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const z = p.getZ(i);
+    p.setY(i, groundHeight(x, z));
+    uv.setXY(i, x / 3.5, z / 3.5);
+  }
+  g.computeVertexNormals();
+  return (groundGeos[low] = g);
+}
+// the grass photo's average colour, for the ground while (or if) the photo does not load
+const GRASS_AVG = new THREE.Color().setRGB(0.108, 0.213, 0.018);
+
+function Ground({ low }) {
+  const grass = useLoader(THREE.TextureLoader, '/textures/grass.webp');
+  return <GroundMesh low={low} grass={grass} />;
+}
+function GroundPlain({ low }) {
+  return <GroundMesh low={low} grass={null} />;
+}
+
+function GroundMesh({ low, grass }) {
+  const geo = groundGeometry(low);
   const mat = useMemo(() => {
-    grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
-    grass.colorSpace = THREE.SRGBColorSpace;
-    grass.anisotropy = 8;
-    const m = new THREE.MeshStandardMaterial({ map: grass, roughness: 1 });
+    let m;
+    if (grass) {
+      grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
+      grass.colorSpace = THREE.SRGBColorSpace;
+      grass.anisotropy = 8;
+      m = new THREE.MeshStandardMaterial({ map: grass, roughness: 1 });
+    } else m = new THREE.MeshStandardMaterial({ color: GRASS_AVG, roughness: 1 });
     m.onBeforeCompile = (s) => {
       s.uniforms.uN3 = getN3();
       s.vertexShader = s.vertexShader
@@ -80,6 +98,27 @@ function Ground() {
     return m;
   }, [grass]);
   return <mesh geometry={geo} material={mat} receiveShadow />;
+}
+
+// A part of the scene that needs a downloaded texture. It loads on its own, so the
+// fire and logs show before it arrives, and if it fails only this part falls back
+// to a plain stand-in (instead of the whole 3D view giving up).
+class Textured extends Component {
+  constructor(p) {
+    super(p);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(e) {
+    console.warn('texture failed, using a plain stand-in', e);
+  }
+  render() {
+    const { fallback = null, children } = this.props;
+    if (this.state.failed) return fallback;
+    return <Suspense fallback={fallback}>{children}</Suspense>;
+  }
 }
 
 /* Boulders along the cliff edge */
@@ -338,15 +377,23 @@ function Lantern({ position, phase = 0 }) {
   );
 }
 
-export default function Surroundings() {
+export default function Surroundings({ quality = 'high' }) {
+  const low = quality !== 'high';
   return (
     <group>
-      <Sky />
-      <Moon />
-      <Mountains />
+      <Textured>
+        <Sky />
+      </Textured>
+      <SkyGlow />
+      <Textured fallback={<MoonPlain />}>
+        <Moon />
+      </Textured>
+      <Mountains low={low} />
       <CloudSea />
       <VillageLights />
-      <Ground />
+      <Textured fallback={<GroundPlain low={low} />}>
+        <Ground low={low} />
+      </Textured>
       <Stones />
       <Trees />
       <SeatLogs />

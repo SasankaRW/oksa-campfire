@@ -95,7 +95,8 @@ export default function FireVolume({ quality = 'high' }) {
         glslVersion: THREE.GLSL3,
         vertexShader: vert,
         fragmentShader: frag,
-        defines: { STEPS: quality === 'high' ? 32 : 18 },
+        // 'lite': a phone that could not hold a steady frame rate
+        defines: { STEPS: quality === 'high' ? 32 : quality === 'lite' ? 10 : 18 },
         uniforms: {
           uNoise: { value: noise3D() },
           uTime: { value: 0 },
