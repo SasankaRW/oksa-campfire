@@ -30,7 +30,10 @@ function fetchPhoto(p) {
   cache.set(p.src, e);
   compose(p)
     .then((r) => {
-      if (cache.get(p.src) !== e) return r.tex.dispose();
+      if (cache.get(p.src) !== e) {
+        dropVideo(r.video);
+        return r.tex.dispose();
+      }
       Object.assign(e, r, { ready: true });
     })
     .catch(() => (e.failed = true)); // keep the entry so a broken photo is not requested again every frame
@@ -39,6 +42,7 @@ function fetchPhoto(p) {
     const old = [...cache.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, cache.size - KEEP);
     for (const [src, o] of old) {
       o.tex?.dispose();
+      dropVideo(o.video);
       cache.delete(src);
     }
   }
@@ -61,11 +65,48 @@ function roundRect(g, x, y, w, h, r) {
   g.arcTo(x, y, x + w, y, r);
   g.closePath();
 }
-async function compose({ src, caption }) {
-  const img = new Image();
-  img.decoding = 'async';
-  img.src = src;
-  await img.decode();
+// A video clip: muted, inline and looping, so phones let it play on its own.
+async function loadVideo(src) {
+  const el = document.createElement('video');
+  el.muted = true;
+  el.defaultMuted = true;
+  el.playsInline = true;
+  el.setAttribute('playsinline', '');
+  el.loop = true;
+  el.preload = 'auto';
+  el.src = src;
+  await new Promise((res, rej) => {
+    el.addEventListener('loadeddata', res, { once: true });
+    el.addEventListener('error', () => rej(new Error('video failed')), { once: true });
+    el.load();
+    el.play().catch(() => {}); // some phones only fetch the first frame once playing
+  });
+  el.pause();
+  return el;
+}
+function dropVideo(el) {
+  if (!el) return;
+  el.pause();
+  el.removeAttribute('src');
+  el.load();
+}
+
+async function compose({ src, caption, video }) {
+  let img;
+  let nw;
+  let nh;
+  if (video) {
+    img = await loadVideo(src);
+    nw = img.videoWidth;
+    nh = img.videoHeight;
+  } else {
+    img = new Image();
+    img.decoding = 'async';
+    img.src = src;
+    await img.decode();
+    nw = img.naturalWidth;
+    nh = img.naturalHeight;
+  }
   if (caption) {
     try {
       await document.fonts?.load('italic 40px "Cormorant Garamond"');
@@ -74,51 +115,72 @@ async function compose({ src, caption }) {
   const W = 1024;
   const P = 4; // a few clear pixels so the border edge stays smooth
   const R = 28; // corner radius
-  const a = clamp(img.naturalWidth / img.naturalHeight, 0.8, 1.7);
+  const a = clamp(nw / nh, 0.8, 1.7);
   const pw = W - 2 * P;
   const ph = Math.round(pw / a);
   const H = ph + 2 * P;
-  const ia = img.naturalWidth / img.naturalHeight;
-  let sw = img.naturalWidth;
-  let sh = img.naturalHeight;
+  const ia = nw / nh;
+  let sw = nw;
+  let sh = nh;
   if (ia > a) sw = sh * a;
   else sh = sw / a;
-  const sx = (img.naturalWidth - sw) / 2;
-  const sy = (img.naturalHeight - sh) / 2;
+  const sx = (nw - sw) / 2;
+  const sy = (nh - sh) / 2;
 
   const c = canvas(W, H);
   const g = c.getContext('2d');
 
-  // the photo, clipped to the rounded corners
-  g.save();
-  roundRect(g, P, P, pw, ph, R);
-  g.clip();
-  g.drawImage(img, sx, sy, sw, sh, P, P, pw, ph);
-  if (caption) {
-    // a dark fade at the bottom so the caption reads on any photo
-    const fade = g.createLinearGradient(0, P + ph, 0, P + ph - 170);
-    fade.addColorStop(0, 'rgba(0,0,0,0.55)');
-    fade.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = fade;
-    g.fillRect(P, P + ph - 170, pw, 170);
-    g.fillStyle = 'rgba(255,245,230,0.95)';
-    g.font = 'italic 40px "Cormorant Garamond", Georgia, serif';
-    g.textAlign = 'center';
-    g.fillText(caption, W / 2, P + ph - 50, pw - 120);
-  }
-  g.restore();
+  // drawn once for a photo, and again for each new frame of a video
+  const draw = () => {
+    g.clearRect(0, 0, W, H);
+    // the photo, clipped to the rounded corners
+    g.save();
+    roundRect(g, P, P, pw, ph, R);
+    g.clip();
+    g.drawImage(img, sx, sy, sw, sh, P, P, pw, ph);
+    if (caption) {
+      // a dark fade at the bottom so the caption reads on any photo
+      const fade = g.createLinearGradient(0, P + ph, 0, P + ph - 170);
+      fade.addColorStop(0, 'rgba(0,0,0,0.55)');
+      fade.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = fade;
+      g.fillRect(P, P + ph - 170, pw, 170);
+      g.fillStyle = 'rgba(255,245,230,0.95)';
+      g.font = 'italic 40px "Cormorant Garamond", Georgia, serif';
+      g.textAlign = 'center';
+      g.fillText(caption, W / 2, P + ph - 50, pw - 120);
+    }
+    g.restore();
 
-  // very thin light border
-  roundRect(g, P + 1, P + 1, pw - 2, ph - 2, R - 1);
-  g.strokeStyle = 'rgba(255,244,230,0.7)';
-  g.lineWidth = 2;
-  g.stroke();
+    // very thin light border
+    roundRect(g, P + 1, P + 1, pw - 2, ph - 2, R - 1);
+    g.strokeStyle = 'rgba(255,244,230,0.7)';
+    g.lineWidth = 2;
+    g.stroke();
+  };
+  draw();
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   // inner: the share of the texture's width the photo itself takes up
-  return { tex, aspect: W / H, inner: pw / W, photo: pw / ph };
+  return { tex, aspect: W / H, inner: pw / W, photo: pw / ph, video: video ? img : null, draw };
+}
+
+// Videos play only while they are on screen, and their frames are copied into the texture.
+function updateVideos(showing) {
+  for (const e of cache.values()) {
+    const el = e.video;
+    if (!el) continue;
+    if (showing?.has(e)) {
+      if (el.paused) el.play().catch(() => {});
+      if (el.currentTime !== e.lastT) {
+        e.lastT = el.currentTime;
+        e.draw();
+        e.tex.needsUpdate = true;
+      }
+    } else if (!el.paused) el.pause();
+  }
 }
 
 export default function MemorySky() {
@@ -159,6 +221,7 @@ export default function MemorySky() {
   useEffect(() => {
     loadManifest().then((list) => (photos.current = list));
     return () => {
+      updateVideos(null);
       meshes.forEach((m) => m.material.dispose());
       geo.dispose();
     };
@@ -187,6 +250,7 @@ export default function MemorySky() {
     shared.memK = s.k;
     if (s.k < 0.003 || !n) {
       meshes.forEach((m) => (m.visible = false));
+      updateVideos(null);
       return;
     }
 
@@ -219,6 +283,7 @@ export default function MemorySky() {
     const push = f * Math.max(0, (cfw - cpw) / 2 + slot * 0.05);
 
     meshes.forEach((m) => (m.visible = false));
+    const showing = new Set();
     for (let i = base; i <= last; i++) {
       const m = meshes[mod(i, POOL)];
       const u = m.userData;
@@ -241,6 +306,7 @@ export default function MemorySky() {
       const alpha = s.k * edge * u.r * (1 - 0.45 * f * (1 - c));
       m.visible = alpha > 0.003;
       if (!m.visible) continue;
+      if (e.video) showing.add(e);
       // fit the photo inside its slot (a small gap between neighbours), or the focus box
       const pw0 = Math.min(slot * 0.9, rowH * e.photo);
       const pw1 = Math.min(focusW, focusH * e.photo);
@@ -258,6 +324,7 @@ export default function MemorySky() {
       m.material.opacity = alpha;
       m.renderOrder = c > 0.5 ? -6 : -7; // after the village lights (-8); the middle photo on top
     }
+    updateVideos(showing);
   });
 
   return meshes.map((m, i) => <primitive key={i} object={m} />);
