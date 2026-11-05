@@ -10,8 +10,8 @@ const nextConfig = {
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {
-        // memory photos have a content hash in their names, so they never change
-        source: '/memories/:file(m-.*\\.webp)',
+        // memory photos and videos have a content hash in their names, so they never change
+        source: '/memories/:file(m-.*\\.(?:webp|mp4))',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {

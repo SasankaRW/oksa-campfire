@@ -15,6 +15,7 @@ Supabase is the free online database that lets everyone share one fire. Until yo
 2. Open `supabase/schema.sql` from this repo, copy everything in it and paste it into the editor.
 3. Click **Run**. It should say "Success. No rows returned".
 4. To check: open **Table Editor**. You should see two tables, `logs` and `fire_state`.
+5. Then do the same with `supabase/migrations/2026-11-05-hardening.sql` (rate limits and a safer way to add logs). New projects get it from `schema.sql` already, but it's safe to run again.
 
 ## 3. Copy the keys
 Open **Project Settings** (the gear icon), then:
@@ -33,7 +34,7 @@ In Vercel, open your project, go to **Settings → Environment Variables**, and 
 | `NEXT_PUBLIC_SUPABASE_URL` | the Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the anon / publishable key |
 | `SUPABASE_SERVICE_ROLE_KEY` | the service_role / secret key |
-| `ADMIN_PASSCODE` | a passcode you choose for /admin |
+| `ADMIN_PASSCODE` | a long random passcode for /admin (16+ characters) |
 
 Then go to **Deployments**, click the **⋯** menu on the latest deployment and choose **Redeploy**. Environment variables only take effect after a redeploy.
 
@@ -47,6 +48,21 @@ To test on your own computer instead, create a file called `.env.local` in the p
 5. When you're done, click **Reset everything**.
 
 ## On the event night
-- The app is built for about 400 people on the free plan. Roughly the first 200 get instant live updates, and everyone else stays in sync through a quick check every 3 seconds. If you want instant updates for everyone, upgrade this project to **Pro** for that month (Organization → Billing), then downgrade afterwards.
+- The app is built for about 400 people on the free plan. Roughly the first 200 get instant live updates of the fire, and everyone else stays in sync through a quick check every 5 seconds. New logs reach everyone through that check (shared through Vercel's cache), not live. If you want instant updates for everyone, upgrade this project to **Pro** for that month (Organization → Billing), then downgrade afterwards.
 - A free project **pauses after 7 days with no activity**. Open the site (or the Supabase dashboard) a day or two before the event so it's awake.
 - If you ran an older `schema.sql` before, run the current one again. It's safe to re-run.
+
+## Before the event (checklist)
+- [ ] Run `supabase/migrations/2026-11-05-hardening.sql` in the SQL Editor (safe to re-run). Without it the site still works, but the log limit and passcode lockout are weaker.
+- [ ] Wake the project: a free project **pauses after 7 days with no activity**. Open the site and the Supabase dashboard the day before and on the day.
+- [ ] `ADMIN_PASSCODE` in Vercel is long and random (16+ characters), then redeploy. Five wrong tries from one address locks that address out for 10 minutes. If you lock yourself out, run `delete from public.rate_hits where key like 'admin:%';` in the SQL Editor (or, if you never ran the migration, redeploy), or just wait 10 minutes.
+- [ ] **Never** press *Reset everything* or *Add test logs* while guests are connected. Do your tests well before guests arrive, then reset once.
+- [ ] Check the shared cache works. Run this twice, a few seconds apart (the number is just a fixed moment in time, keep it as is):
+
+  ```
+  curl -s -D - -o /dev/null "https://<your-site>/api/since?s=1700000000000"
+  ```
+
+  The second answer should show `x-vercel-cache: HIT` (or `STALE`). If it always says `MISS`, every guest's check goes to the database: tell the developer.
+
+Not done yet (ideas for later): a "soft reset" that hides logs instead of deleting them, so a mistaken reset could be undone.
