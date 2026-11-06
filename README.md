@@ -1,4 +1,4 @@
-# The Campfire: Kingswood Old Scouts' Association
+# The Campfire: Old Kingswoodian Scouts' Association
 
 A shared 3D virtual campfire. Everyone lays a log, which is visible to all as it lands. When the admin lights the fire, it catches and spreads across every log on every screen at the same moment.
 
