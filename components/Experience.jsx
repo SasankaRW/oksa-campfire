@@ -158,18 +158,28 @@ export default function Experience({ mode = 'guest' }) {
     if (leaderName) setForm((f) => (f.name ? f : { ...f, name: leaderName }));
   }, [leaderName]);
 
-  // The fire keeper pressed "Reset everything" after this guest signed in (or before profiles
-  // remembered their reset): forget the saved name and photo so they enter their details again.
+  // The fire keeper pressed "Reset everything" after this guest signed in: forget the saved
+  // name and photo so they enter their details again. Profiles saved before this check
+  // existed have no `reset` at all and are cleared by the next reset too.
+  const fireLoaded = useStore((s) => s.fireLoaded);
   const resetAt = fire.reset_at || 0;
   useEffect(() => {
-    if (!profile || !resetAt || (profile.reset || 0) >= resetAt) return;
+    if (!profile || !fireLoaded) return;
+    if (profile.reset === null) {
+      // signed in before the fire state had loaded: this sign-in belongs to the current reset
+      const p = { ...profile, reset: resetAt };
+      saveProfile(p);
+      setProfile(p);
+      return;
+    }
+    if (!resetAt || (profile.reset || 0) >= resetAt) return;
     clearProfile();
     clearPhoto();
     setProfile(null);
     setPhoto(null);
     setForm({ name: leaderName, batch: '', message: '' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, resetAt]);
+  }, [profile, resetAt, fireLoaded]);
 
   async function layHonour() {
     setLeaderBusy(true);
@@ -196,7 +206,8 @@ export default function Experience({ mode = 'guest' }) {
       name: name.slice(0, MAX_NAME),
       batch: form.batch.trim(),
       message: form.message.trim().slice(0, MAX_MESSAGE),
-      reset: useStore.getState().fire.reset_at || 0, // which reset this sign-in belongs to
+      // which reset this sign-in belongs to (null: not known yet, filled in once the fire loads)
+      reset: useStore.getState().fireLoaded ? useStore.getState().fire.reset_at || 0 : null,
     };
     saveProfile(p);
     setProfile(p);
