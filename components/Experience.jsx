@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { useStore, loadProfile, saveProfile } from '@/lib/store';
+import { useStore, loadProfile, saveProfile, clearProfile } from '@/lib/store';
 import { startRealtime, addLog, leaderInfo, leaderLay } from '@/lib/realtime';
 import { initAudio, muteAudio } from '@/lib/audio';
 import { emit, shared, setZoom } from '@/lib/bus';
@@ -158,6 +158,19 @@ export default function Experience({ mode = 'guest' }) {
     if (leaderName) setForm((f) => (f.name ? f : { ...f, name: leaderName }));
   }, [leaderName]);
 
+  // The fire keeper pressed "Reset everything" after this guest signed in (or before profiles
+  // remembered their reset): forget the saved name and photo so they enter their details again.
+  const resetAt = fire.reset_at || 0;
+  useEffect(() => {
+    if (!profile || !resetAt || (profile.reset || 0) >= resetAt) return;
+    clearProfile();
+    clearPhoto();
+    setProfile(null);
+    setPhoto(null);
+    setForm({ name: leaderName, batch: '', message: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, resetAt]);
+
   async function layHonour() {
     setLeaderBusy(true);
     try {
@@ -179,7 +192,12 @@ export default function Experience({ mode = 'guest' }) {
     setError('');
     initAudio();
     setSound(true);
-    const p = { name: name.slice(0, MAX_NAME), batch: form.batch.trim(), message: form.message.trim().slice(0, MAX_MESSAGE) };
+    const p = {
+      name: name.slice(0, MAX_NAME),
+      batch: form.batch.trim(),
+      message: form.message.trim().slice(0, MAX_MESSAGE),
+      reset: useStore.getState().fire.reset_at || 0, // which reset this sign-in belongs to
+    };
     saveProfile(p);
     setProfile(p);
   }
